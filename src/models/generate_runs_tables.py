@@ -38,10 +38,10 @@ SUMMARY_LABELS = {
 
 
 def fmt(value: str) -> str:
-    """Desatinná bodka -> čiarka, prázdne bunky ostanú prázdne."""
+    """Na 2 desatinné miesta (napr. '100.0' -> '100,00'), desatinná čiarka namiesto bodky."""
     if value == "":
         return ""
-    return value.replace(".", ",")
+    return f"{float(value):.2f}".replace(".", ",")
 
 
 def build_table(model_key: str, model_label: str) -> str:

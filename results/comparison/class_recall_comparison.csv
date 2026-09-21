@@ -1,0 +1,8 @@
+trieda,SVM,MLP,CNN,LSTM
+betón,100.00,95.00,98.75,96.25
+tráva,93.75,90.00,92.50,95.00
+kamienky,100.00,100.00,98.75,98.75
+piesok,98.75,100.00,100.00,97.50
+dlažobný kameň,88.75,92.50,87.50,90.00
+bežecká dráha,96.25,95.00,93.75,96.25
+"najčastejšia zámena (skutočná -> predikovaná, počet z 480)",dlažobný kameň -> betón (7),tráva -> piesok (5),dlažobný kameň -> betón (10),dlažobný kameň -> betón (4)

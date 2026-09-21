@@ -31,7 +31,7 @@ for _p in (_this_dir, _this_dir.parent):
         sys.path.insert(0, str(_p))
 
 from config import RESULTS_DIR
-from evaluate import summarize_runs
+from evaluate import round_half_up, summarize_runs
 
 RESULTS_COMPARISON_DIR = RESULTS_DIR / "comparison"
 
@@ -135,14 +135,17 @@ def print_comparison(collected: dict[str, dict]) -> None:
 
     for model in _rank(collected):
         r = collected[model]
-        cell = lambda part, key: (f"{r[part][key]['mean'] * 100:6.2f}±{r[part][key]['std'] * 100:4.2f}%")
+        cell = lambda part, key: (
+            f"{round_half_up(r[part][key]['mean'] * 100):6.2f}±{round_half_up(r[part][key]['std'] * 100):4.2f}%"
+        )
         print(f"  {model.upper():<6} {MODELS[model]:<26} {cell('val', 'accuracy'):>16} "
               f"{cell('test', 'accuracy'):>16} {cell('test', 'precision'):>16} {cell('test', 'recall'):>16}")
 
     print(f"\n  {'model':<6} {'TEST min':>10} {'TEST max':>10}   víťazná konfigurácia")
     for model in _rank(collected):
         acc = collected[model]["test"]["accuracy"]
-        print(f"  {model.upper():<6} {acc['min'] * 100:9.2f}% {acc['max'] * 100:9.2f}%   {collected[model]['best']}")
+        print(f"  {model.upper():<6} {round_half_up(acc['min'] * 100):9.2f}% {round_half_up(acc['max'] * 100):9.2f}%   "
+              f"{collected[model]['best']}")
 
 
 def write_markdown(collected: dict[str, dict], out_dir: Path = RESULTS_COMPARISON_DIR) -> Path:
@@ -156,7 +159,9 @@ def write_markdown(collected: dict[str, dict], out_dir: Path = RESULTS_COMPARISO
               "|---|---|---|---|---|---|"]
     for model in _rank(collected):
         r = collected[model]
-        cell = lambda part, key: f"{r[part][key]['mean'] * 100:.2f} % ± {r[part][key]['std'] * 100:.2f}"
+        cell = lambda part, key: (
+            f"{round_half_up(r[part][key]['mean'] * 100):.2f} % ± {round_half_up(r[part][key]['std'] * 100):.2f}"
+        )
         lines.append(f"| **{model.upper()}** | {MODELS[model]} | {cell('val', 'accuracy')} | "
                      f"{cell('test', 'accuracy')} | {cell('test', 'precision')} | {cell('test', 'recall')} |")
 
@@ -164,14 +169,15 @@ def write_markdown(collected: dict[str, dict], out_dir: Path = RESULTS_COMPARISO
               "| Model | min | max | priemer | std | Víťazná konfigurácia |", "|---|---|---|---|---|---|"]
     for model in _rank(collected):
         acc = collected[model]["test"]["accuracy"]
-        lines.append(f"| **{model.upper()}** | {acc['min'] * 100:.2f} % | {acc['max'] * 100:.2f} % | "
-                     f"{acc['mean'] * 100:.2f} % | {acc['std'] * 100:.2f} | `{collected[model]['best']}` |")
+        lines.append(f"| **{model.upper()}** | {round_half_up(acc['min'] * 100):.2f} % | "
+                     f"{round_half_up(acc['max'] * 100):.2f} % | {round_half_up(acc['mean'] * 100):.2f} % | "
+                     f"{round_half_up(acc['std'] * 100):.2f} | `{collected[model]['best']}` |")
 
     lines += ["", "## Accuracy po jednotlivých rozdeleniach (testovacie dáta)", "",
               "| Model | " + " | ".join(f"split_{i:02d}" for i in range(max(r["n_runs"] for r in collected.values()))) + " |",
               "|---" * (1 + max(r["n_runs"] for r in collected.values())) + "|"]
     for model in _rank(collected):
-        accs = " | ".join(f"{a * 100:.2f} %" for a in collected[model]["test_accs"])
+        accs = " | ".join(f"{round_half_up(a * 100):.2f} %" for a in collected[model]["test_accs"])
         lines.append(f"| **{model.upper()}** | {accs} |")
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -200,7 +206,7 @@ def write_csv(collected: dict[str, dict], out_dir: Path = RESULTS_COMPARISON_DIR
             row = [model.upper(), MODELS[model], r["n_runs"]]
             for part in ("val", "test"):
                 for key in ("accuracy", "precision", "recall"):
-                    row += [round(r[part][key][stat] * 100, 2) for stat in ("mean", "std", "min", "max")]
+                    row += [round_half_up(r[part][key][stat] * 100) for stat in ("mean", "std", "min", "max")]
             row.append(r["best"])
             writer.writerow(row)
 

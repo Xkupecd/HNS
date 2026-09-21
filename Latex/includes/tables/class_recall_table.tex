@@ -1,0 +1,35 @@
+\begin{table}[H]
+    \centering
+    \caption{Recall po jednotlivých triedach na testovacích dátach (súčet z 5 behov, 80 okien na triedu a model)}
+    \label{tab:class-recall}
+    \footnotesize
+    \begin{tabular}{lcccc}
+        \toprule
+        Trieda & SVM & MLP & CNN & LSTM \\
+        \midrule
+        betón & 100.00 & 95.00 & 98.75 & 96.25 \\
+        tráva & 93.75 & 90.00 & 92.50 & 95.00 \\
+        kamienky & 100.00 & 100.00 & 98.75 & 98.75 \\
+        piesok & 98.75 & 100.00 & 100.00 & 97.50 \\
+        dlažobný kameň & 88.75 & 92.50 & 87.50 & 90.00 \\
+        bežecká dráha & 96.25 & 95.00 & 93.75 & 96.25 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \caption{Najčastejšia mimodiagonálna zámena na testovacích dátach (skutočná trieda $\rightarrow$ predikovaná, počet okien z 80)}
+    \label{tab:class-confusion}
+    \footnotesize
+    \begin{tabular}{ll}
+        \toprule
+        Model & Najčastejšia zámena \\
+        \midrule
+        SVM & dlažobný kameň $\rightarrow$ betón (7) \\
+        MLP & tráva $\rightarrow$ piesok (5) \\
+        CNN & dlažobný kameň $\rightarrow$ betón (10) \\
+        LSTM & dlažobný kameň $\rightarrow$ betón (4) \\
+        \bottomrule
+    \end{tabular}
+\end{table}

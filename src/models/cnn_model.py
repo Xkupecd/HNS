@@ -416,7 +416,7 @@ def run_multiple_splits(cfg: CNNConfig, training_cfg: dict, n_splits: int = N_SP
         list(histories.keys()),
         [run["accuracy"] for run in val_runs],
         [run["accuracy"] for run in test_runs],
-        title=f"CNN ({cfg.name}) - úspešnosť naprieč {n_splits} behmi (splitmi)",
+        title=f"CNN (finálna konfigurácia) - úspešnosť naprieč {n_splits} behmi",
         ylabel="Accuracy [%]",
         filename="final_splits_accuracy.png",
         out_dir=RESULTS_CNN_DIR,

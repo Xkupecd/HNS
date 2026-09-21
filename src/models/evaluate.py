@@ -18,6 +18,7 @@ import io
 import json
 import sys
 import time
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 import numpy as np
@@ -61,6 +62,19 @@ def _style_axes(ax, title: str | None = None, xlabel: str | None = None, ylabel:
         ax.set_ylabel(ylabel, fontsize=FONT_LABEL)
     ax.tick_params(axis="both", labelsize=FONT_TICK)
     ax.grid(alpha=0.3)
+
+
+def round_half_up(value: float, ndigits: int = 2) -> float:
+    """
+    Zaokrúhlenie na `ndigits` desatinných miest metódou "polovica hore"
+    (napr. 95,625 -> 95,63), na rozdiel od vstavaného `round()`, ktorý pre .5
+    zaokrúhľuje na párnu číslicu (banker's rounding: 95,625 -> 95,62). Používa sa
+    všade, kde sa vypočítaná metrika ukladá/vypisuje ako percento so 2 desatinnými
+    miestami, aby boli čísla v runs.csv, v porovnávacej tabuľke aj v texte
+    dokumentácie vždy zaokrúhlené rovnako.
+    """
+    quantum = Decimal(1).scaleb(-ndigits)
+    return float(Decimal(str(value)).quantize(quantum, rounding=ROUND_HALF_UP))
 
 
 def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
@@ -113,8 +127,8 @@ def print_summary(name: str, summary: dict[str, dict[str, float]]) -> None:
     print(f"  {'metrika':<12} {'min':>8} {'max':>8} {'priemer':>9} {'std':>8}")
     for key, stats in summary.items():
         print(
-            f"  {key:<12} {stats['min'] * 100:7.2f}% {stats['max'] * 100:7.2f}% "
-            f"{stats['mean'] * 100:8.2f}% {stats['std'] * 100:7.2f}%"
+            f"  {key:<12} {round_half_up(stats['min'] * 100):7.2f}% {round_half_up(stats['max'] * 100):7.2f}% "
+            f"{round_half_up(stats['mean'] * 100):8.2f}% {round_half_up(stats['std'] * 100):7.2f}%"
         )
 
 
@@ -420,7 +434,7 @@ def plot_runs_bar_chart(
     fig.tight_layout()
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_dir / filename, dpi=150)
+    fig.savefig(out_dir / filename, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"  Graf úspešnosti uložený: {out_dir / filename}")
 
@@ -464,7 +478,7 @@ def save_run_artifacts(
 
     meta = {
         "split": split_idx,
-        "train_seconds": round(train_seconds, 3),
+        "train_seconds": round_half_up(train_seconds, 3),
         "val": val_metrics,
         "test": test_metrics,
     }
@@ -496,9 +510,9 @@ def write_runs_csv(
         for i, (val_m, test_m, secs) in enumerate(zip(val_runs, test_runs, train_seconds)):
             writer.writerow([
                 f"split_{i:02d}",
-                round(val_m["accuracy"] * 100, 2), round(val_m["precision"] * 100, 2), round(val_m["recall"] * 100, 2),
-                round(test_m["accuracy"] * 100, 2), round(test_m["precision"] * 100, 2), round(test_m["recall"] * 100, 2),
-                round(secs, 2),
+                round_half_up(val_m["accuracy"] * 100), round_half_up(val_m["precision"] * 100), round_half_up(val_m["recall"] * 100),
+                round_half_up(test_m["accuracy"] * 100), round_half_up(test_m["precision"] * 100), round_half_up(test_m["recall"] * 100),
+                round_half_up(secs),
             ])
 
         val_summary = summarize_runs(val_runs)
@@ -510,13 +524,13 @@ def write_runs_csv(
             label = {"min": "min", "max": "max", "mean": "priemer", "std": "std"}[stat]
             writer.writerow([
                 label,
-                round(val_summary["accuracy"][stat] * 100, 2), round(val_summary["precision"][stat] * 100, 2),
-                round(val_summary["recall"][stat] * 100, 2),
-                round(test_summary["accuracy"][stat] * 100, 2), round(test_summary["precision"][stat] * 100, 2),
-                round(test_summary["recall"][stat] * 100, 2),
-                round(extra_time[label], 2) if label in extra_time else "",
+                round_half_up(val_summary["accuracy"][stat] * 100), round_half_up(val_summary["precision"][stat] * 100),
+                round_half_up(val_summary["recall"][stat] * 100),
+                round_half_up(test_summary["accuracy"][stat] * 100), round_half_up(test_summary["precision"][stat] * 100),
+                round_half_up(test_summary["recall"][stat] * 100),
+                round_half_up(extra_time[label]) if label in extra_time else "",
             ])
-        writer.writerow(["spolu (čas)", "", "", "", "", "", "", round(extra_time["spolu"], 2)])
+        writer.writerow(["spolu (čas)", "", "", "", "", "", "", round_half_up(extra_time["spolu"])])
 
     print(f"  Tabuľka behov uložená: {out_path}")
     return out_path

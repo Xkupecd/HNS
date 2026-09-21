@@ -593,7 +593,7 @@ def run_multiple_splits(cfg: LSTMConfig, training_cfg: dict, n_splits: int = N_S
         list(histories.keys()),
         [run["accuracy"] for run in val_runs],
         [run["accuracy"] for run in test_runs],
-        title=f"LSTM ({cfg.name}) - úspešnosť naprieč {n_splits} behmi (splitmi)",
+        title=f"LSTM (finálna konfigurácia) - úspešnosť naprieč {n_splits} behmi",
         ylabel="Accuracy [%]",
         filename="final_splits_accuracy.png",
         out_dir=RESULTS_LSTM_DIR,
