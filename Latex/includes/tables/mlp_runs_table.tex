@@ -1,0 +1,24 @@
+\begin{table}[H]
+    \centering
+    \caption{MLP -- výsledky jednotlivých behov (validačné a testovacie dáta)}
+    \label{tab:runs-mlp}
+    \footnotesize
+    \begin{tabular}{lcccccc}
+        \toprule
+         & \multicolumn{3}{c}{Validačné dáta} & \multicolumn{3}{c}{Testovacie dáta} \\
+        \cmidrule(lr){2-4} \cmidrule(lr){5-7}
+        Beh & acc [\%] & prec [\%] & rec [\%] & acc [\%] & prec [\%] & rec [\%] \\
+        \midrule
+        split\_00 & 96,88 & 97,17 & 96,88 & 90,62 & 93,16 & 90,62 \\
+        split\_01 & 94,79 & 95,52 & 94,79 & 93,75 & 94,71 & 93,75 \\
+        split\_02 & 97,92 & 98,15 & 97,92 & 97,92 & 98,15 & 97,92 \\
+        split\_03 & 92,71 & 93,4 & 92,71 & 94,79 & 95,69 & 94,79 \\
+        split\_04 & 97,92 & 98,04 & 97,92 & 100,0 & 100,0 & 100,0 \\
+        \midrule
+        min & 92,71 & 93,4 & 92,71 & 90,62 & 93,16 & 90,62 \\
+        max & 97,92 & 98,15 & 97,92 & 100,0 & 100,0 & 100,0 \\
+        priemer & 96,04 & 96,45 & 96,04 & 95,42 & 96,34 & 95,42 \\
+        std & 2,02 & 1,79 & 2,02 & 3,27 & 2,44 & 3,27 \\
+        \bottomrule
+    \end{tabular}
+\end{table}

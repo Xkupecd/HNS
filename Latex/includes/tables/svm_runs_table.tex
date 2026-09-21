@@ -1,0 +1,24 @@
+\begin{table}[H]
+    \centering
+    \caption{SVM -- výsledky jednotlivých behov (validačné a testovacie dáta)}
+    \label{tab:runs-svm}
+    \footnotesize
+    \begin{tabular}{lcccccc}
+        \toprule
+         & \multicolumn{3}{c}{Validačné dáta} & \multicolumn{3}{c}{Testovacie dáta} \\
+        \cmidrule(lr){2-4} \cmidrule(lr){5-7}
+        Beh & acc [\%] & prec [\%] & rec [\%] & acc [\%] & prec [\%] & rec [\%] \\
+        \midrule
+        split\_00 & 96,88 & 97,17 & 96,88 & 88,54 & 91,78 & 88,54 \\
+        split\_01 & 91,67 & 92,14 & 91,67 & 97,92 & 98,04 & 97,92 \\
+        split\_02 & 97,92 & 98,04 & 97,92 & 97,92 & 97,98 & 97,92 \\
+        split\_03 & 96,88 & 96,94 & 96,88 & 97,92 & 98,15 & 97,92 \\
+        split\_04 & 98,96 & 99,02 & 98,96 & 98,96 & 99,02 & 98,96 \\
+        \midrule
+        min & 91,67 & 92,14 & 91,67 & 88,54 & 91,78 & 88,54 \\
+        max & 98,96 & 99,02 & 98,96 & 98,96 & 99,02 & 98,96 \\
+        priemer & 96,46 & 96,66 & 96,46 & 96,25 & 96,99 & 96,25 \\
+        std & 2,52 & 2,37 & 2,52 & 3,88 & 2,63 & 3,88 \\
+        \bottomrule
+    \end{tabular}
+\end{table}

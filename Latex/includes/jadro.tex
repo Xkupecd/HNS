@@ -117,7 +117,7 @@ podstatne menej citlivý na voľbu learning rate. Samotný learning rate je
 najdôležitejší parameter -- pri $10^{-4}$ model po 20 epochách ani zďaleka
 nedokonverguje (70,8~\%), pri $10^{-3}$ až $10^{-2}$ dosahuje okolo 94~\%.
 
-\obrazoknasirku{img/mlp_hyperparam.png}{MLP -- priebeh trénovania pri
+\obrazok[\textwidth]{img/mlp_hyperparam.png}{MLP -- priebeh trénovania pri
 rôznych parametroch trénovania}{fig:mlp-hyper}
 
 Porovnanie štruktúr (Obr.~\ref{fig:mlp-arch}) ukázalo, že najlepšie obstála
@@ -125,7 +125,7 @@ sieť 64--32 \emph{bez} Dropoutu. Pri takto malej sieti a krátkom trénovaní
 (15 epoch) Dropout skôr spomaľuje učenie, než by bránil preučeniu -- regularizáciu
 tu dostatočne zabezpečuje už samotná veľkosť siete a nízky počet epoch.
 
-\obrazoknasirku{img/mlp_architecture.png}{MLP -- porovnanie štruktúr
+\obrazok[\textwidth]{img/mlp_architecture.png}{MLP -- porovnanie štruktúr
 siete vrátane vplyvu Dropout vrstvy}{fig:mlp-arch}
 
 \section{Modely s automatickou extrakciou príznakov}
@@ -148,10 +148,10 @@ a zároveň robí model necitlivým na to, kde presne v okne sa daný vzor vysky
 Prínosná bola aj BatchNorm vrstva (+2 p.\,b.), zväčšenie siete na tri bloky
 už nie.
 
-\obrazoknasirku{img/cnn_architecture.png}{CNN -- porovnanie
+\obrazok[\textwidth]{img/cnn_architecture.png}{CNN -- porovnanie
 architektúr}{fig:cnn-arch}
 
-\obrazoknasirku{img/cnn_hyperparam.png}{CNN -- priebeh trénovania pri
+\obrazok[\textwidth]{img/cnn_hyperparam.png}{CNN -- priebeh trénovania pri
 rôznych parametroch trénovania}{fig:cnn-hyper}
 
 \subsection{LSTM}
@@ -199,7 +199,7 @@ z posledného skrytého stavu (57,5~\% $\rightarrow$ 80,8~\%). Možnosť ostala
 v kóde ako parameter -- pri $k=5$ je tréning približne päťkrát rýchlejší za
 cenu asi jedného percentuálneho bodu.
 
-\obrazoknasirku{img/lstm_input.png}{LSTM -- porovnanie vstupnej
+\obrazok[\textwidth]{img/lstm_input.png}{LSTM -- porovnanie vstupnej
 reprezentácie a spôsobu čítania výstupu}{fig:lstm-input}
 
 \paragraph{Augmentácia trénovacích dát.} Na každú trénovaciu dávku sa aplikuje
@@ -211,7 +211,7 @@ amplitúdy simuluje mierne odlišné uchytenie alebo citlivosť snímača.
 Augmentácia zvýšila úspešnosť z 89,8~\% na 92,3~\% (Obr.~\ref{fig:lstm-aug}),
 pričom najväčší podiel na tom má práve časový posun.
 
-\obrazoknasirku{img/lstm_augmentation.png}{LSTM -- vplyv augmentácie
+\obrazok[\textwidth]{img/lstm_augmentation.png}{LSTM -- vplyv augmentácie
 trénovacích dát}{fig:lstm-aug}
 
 \subsubsection{Ladenie parametrov a štruktúry}
@@ -225,7 +225,7 @@ s augmentáciou znesie \emph{podstatne dlhšie trénovanie}: zatiaľ čo pri
 augmentácia robí každú epochu trochu inou, takže sa model nepreučí ani po
 200 epochách.
 
-\obrazoknasirku{img/lstm_hyperparam.png}{LSTM -- priebeh trénovania
+\obrazok[\textwidth]{img/lstm_hyperparam.png}{LSTM -- priebeh trénovania
 pri rôznych parametroch trénovania}{fig:lstm-hyper}
 
 Pri porovnaní štruktúr (Obr.~\ref{fig:lstm-arch}) dosiahla najlepší výsledok
@@ -236,7 +236,7 @@ ako pri MLP -- úlohu regularizátora už preberá augmentácia dát, takže ďa
 tlmenie aktivácií model iba oslabuje. Druhá vrstva LSTM ani zmenšenie siete na
 64 jednotiek neprispeli, obojsmerné spracovanie pridalo približne 1,7~p.\,b.
 
-\obrazoknasirku{img/lstm_architecture.png}{LSTM -- porovnanie štruktúr
+\obrazok[\textwidth]{img/lstm_architecture.png}{LSTM -- porovnanie štruktúr
 siete vrátane vplyvu Dropout vrstvy}{fig:lstm-arch}
 
 Finálna konfigurácia je teda: obojsmerná LSTM (128 jednotiek, 1 vrstva),
@@ -323,19 +323,23 @@ najdrahšou.
 
 Pre každý model sa teraz z finálnych 5 behov ukladá kompletná sada kontingenčných
 matíc do \texttt{results/<model>/}: jedna pre \textbf{každý jednotlivý beh}
-(\texttt{runs/split\_XX\_confusion.png} -- spolu 5), jedna \textbf{súčtová}
-(spojenie predikcií zo všetkých 5 behov, teda $5 \times 96 = 480$ testovacích
-okien) a jedna pre \textbf{najlepší beh} (podľa testovacej accuracy). Predtým sa
+(\texttt{runs/split\_XX\_confusion.png} -- spolu 5, testovacie dáta), jedna
+\textbf{súčtová na testovacích dátach}, jedna \textbf{súčtová na validačných
+dátach} (spojenie predikcií zo všetkých 5 behov, teda $5 \times 96 = 480$ okien)
+a jedna pre \textbf{najlepší beh} (podľa testovacej accuracy). Predtým sa
 ukladala len jedna matica, a to z ľubovoľne posledného behu (\texttt{split\_04}) --
 čo pri variabilite medzi behmi (kapitola~\ref{sec:vysledky}) skresľovalo obraz
 o chybách modelu.
 
-Nižšie sú preto súčtové matice (najreprezentatívnejšie -- pokrývajú všetky
-testovacie meranie naprieč piatimi rozdeleniami), každá v absolútnych počtoch
+Nižšie sú pre každý model tri matice -- súčtová testovacia (najreprezentatívnejšia,
+pokrýva všetky testovacie merania naprieč piatimi rozdeleniami), súčtová
+validačná a matica najlepšieho jednotlivého behu -- každá v absolútnych počtoch
 aj v percentách v rámci skutočnej triedy.
 
+\subsubsection{LSTM}
+
 \obrazok[0.95\textwidth]{img/lstm_confusion_combined.png}{LSTM -- súčtová
-kontingenčná matica (5 behov spolu, 480 testovacích okien)}{fig:cm-lstm}
+kontingenčná matica (5 behov spolu, testovacie dáta)}{fig:cm-lstm}
 
 Pri LSTM sú tri triedy (tráva, kamienky, piesok) rozpoznané prakticky bezchybne.
 Chyby sa sústreďujú medzi \emph{paving\_stone}, \emph{concrete}
@@ -345,20 +349,60 @@ výrazne odlišný charakter signálu a nemýlia sa. Rovnaký vzor chýb sa obja
 aj u ostatných modelov, čo naznačuje, že ide o vlastnosť dát, nie konkrétneho
 klasifikátora.
 
+\obrazok[0.95\textwidth]{img/lstm_confusion_combined_val.png}{LSTM -- súčtová
+kontingenčná matica (5 behov spolu, validačné dáta)}{fig:cm-lstm-val}
+
+\obrazok[0.95\textwidth]{img/lstm_confusion.png}{LSTM -- kontingenčná matica
+najlepšieho behu (testovacie dáta)}{fig:cm-lstm-best}
+
+\subsubsection{CNN}
+
 \obrazok[0.95\textwidth]{img/cnn_confusion_combined.png}{CNN -- súčtová
-kontingenčná matica (5 behov spolu, 480 testovacích okien)}{fig:cm-cnn}
+kontingenčná matica (5 behov spolu, testovacie dáta)}{fig:cm-cnn}
+
+\obrazok[0.95\textwidth]{img/cnn_confusion_combined_val.png}{CNN -- súčtová
+kontingenčná matica (5 behov spolu, validačné dáta)}{fig:cm-cnn-val}
+
+\obrazok[0.95\textwidth]{img/cnn_confusion.png}{CNN -- kontingenčná matica
+najlepšieho behu (testovacie dáta)}{fig:cm-cnn-best}
+
+\subsubsection{SVM}
 
 \obrazok[0.95\textwidth]{img/svm_confusion_combined.png}{SVM -- súčtová
-kontingenčná matica (5 behov spolu, 480 testovacích okien)}{fig:cm-svm}
+kontingenčná matica (5 behov spolu, testovacie dáta)}{fig:cm-svm}
+
+\obrazok[0.95\textwidth]{img/svm_confusion_combined_val.png}{SVM -- súčtová
+kontingenčná matica (5 behov spolu, validačné dáta)}{fig:cm-svm-val}
+
+\obrazok[0.95\textwidth]{img/svm_confusion.png}{SVM -- kontingenčná matica
+najlepšieho behu (testovacie dáta)}{fig:cm-svm-best}
+
+\subsubsection{MLP}
 
 \obrazok[0.95\textwidth]{img/mlp_confusion_combined.png}{MLP -- súčtová
-kontingenčná matica (5 behov spolu, 480 testovacích okien)}{fig:cm-mlp}
+kontingenčná matica (5 behov spolu, testovacie dáta)}{fig:cm-mlp}
 
-Matica \textbf{najlepšieho} behu (spolu s maticami všetkých 5 jednotlivých behov)
-je uložená pri každom modeli ako \texttt{<model>\_confusion\_matrix.png}
-(resp. \texttt{runs/split\_XX\_confusion.png}) -- v texte sa neuvádza zvlášť,
-keďže ukazuje len jeden (priaznivo vybraný) beh, zatiaľ čo súčtová matica vyššie
-je štatisticky robustnejšia.
+\obrazok[0.95\textwidth]{img/mlp_confusion_combined_val.png}{MLP -- súčtová
+kontingenčná matica (5 behov spolu, validačné dáta)}{fig:cm-mlp-val}
+
+\obrazok[0.95\textwidth]{img/mlp_confusion.png}{MLP -- kontingenčná matica
+najlepšieho behu (testovacie dáta)}{fig:cm-mlp-best}
+
+\subsection{Výsledky jednotlivých behov (validačné aj testovacie dáta)}
+\label{sec:vysledky-behov}
+
+Tabuľky~\ref{tab:runs-svm} až \ref{tab:runs-lstm} uvádzajú kompletné výsledky
+(accuracy, precision, recall) pre \textbf{každý z 5 behov zvlášť}, na
+validačných aj testovacích dátach, plus riadky min/max/priemer/std. Sú
+vygenerované priamo z \texttt{results/<model>/runs/runs.csv} (skript
+\texttt{generate\_runs\_tables.py}), takže presne zodpovedajú uloženým surovým
+predikciám -- rovnaké čísla, aké sú v kapitole~\ref{sec:vysledky} v skratke
+(priemer~$\pm$~std).
+
+\input{includes/tables/svm_runs_table.tex}
+\input{includes/tables/mlp_runs_table.tex}
+\input{includes/tables/cnn_runs_table.tex}
+\input{includes/tables/lstm_runs_table.tex}
 
 \subsection{Prínos prepracovania LSTM}
 
@@ -374,7 +418,7 @@ ale aj stabilnejší.
 \obrazok[0.8\textwidth]{img/lstm_splits.png}{Upravená verzia LSTM --
 úspešnosť naprieč 5 rozdeleniami (priemer 95,63~\%)}{fig:lstm-new}
 
-\obrazoknasirku{img/lstm_final_curves.png}{Upravená verzia LSTM --
+\obrazok[\textwidth]{img/lstm_final_curves.png}{Upravená verzia LSTM --
 priebeh trénovania naprieč 5 rozdeleniami}{fig:lstm-curves}
 
 \section{Poznámky k metodike a obmedzenia}

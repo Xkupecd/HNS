@@ -74,6 +74,11 @@
 
 \begin{document}
 
+% Slovenský babel robí z "-" aktívny znak (skratka pre voliteľné delenie slov),
+% čo rozbíja \cmidrule{m-n} z booktabs (parsuje rozsah cez obyčajný "-").
+% Vypnuté globálne - v dokumente sa táto skratka nikde zámerne nevyužíva.
+\shorthandoff{-}
+
 \frontmatter
 
 \FEIcover
