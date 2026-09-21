@@ -1,0 +1,450 @@
+\section{Dáta a ich spracovanie}
+\label{sec:data}
+
+\subsection{Databáza meraní}
+
+Použitá bola databáza \texttt{outdoor\_terrain\_classification\_database}.
+Obsahuje merania zo šiestich typov povrchu -- betón (\emph{concrete}), tráva
+(\emph{grass}), kamienky (\emph{pebbles}), piesok (\emph{sand}), dlažobný kameň
+(\emph{paving\_stone}) a syntetická bežecká dráha (\emph{running\_track}).
+
+Každý súbor je pomenovaný v tvare \texttt{SEN\_x\_y\_z.csv}, kde \texttt{SEN}
+je typ snímača (ACC, GYR, MAG), \texttt{x} kód terénu (1--6), \texttt{y} kód
+rýchlosti (2 = 86~\% PWM, 3 = 100~\% PWM) a \texttt{z} číslo merania
+(session, 1--7). Na každý terén teda pripadá 14 meraní (7 session
+$\times$ 2 rýchlosti), spolu 84 meraní.
+
+Do klasifikácie vstupujú snímače ACC a GYR, ktoré majú zhodnú vzorkovaciu
+frekvenciu 400~Hz, takže ich vzorky sú časovo zarovnané a dajú sa priamo spojiť
+do šiestich kanálov (ACC\_X/Y/Z, GYR\_X/Y/Z). Magnetometer (MAG) so 100~Hz by
+si vyžadoval prevzorkovanie a pre rozpoznávanie vibrácií povrchu nenesie
+podstatnú informáciu, preto použitý nebol.
+
+\subsection{Rozdelenie na trénovaciu, validačnú a testovaciu množinu}
+
+Rozdelenie prebieha na úrovni \textbf{celých meraní}, nie jednotlivých okien.
+Je to zásadné: okná z toho istého 4,5-sekundového merania sa prekrývajú a sú
+silno korelované. Keby sa rozdeľovalo až po narezaní na okná, okná z jedného
+merania by skončili súčasne v trénovacej aj testovacej množine, model by si
+fakticky zapamätal konkrétne meranie a úspešnosť by bola umelo nadhodnotená.
+
+Z 14 meraní každého terénu sa náhodne vyberie 10 na trénovanie, 2 na validáciu
+a 2 na testovanie. Aby výsledky nezáviseli od jedného náhodného rozdelenia,
+vytvorených bolo \textbf{5 nezávislých rozdelení} (\texttt{split\_00} až
+\texttt{split\_04}) s pevne daným náhodným semienkom, takže sú reprodukovateľné.
+Skript navyše overuje, že sa žiadne meranie nevyskytuje vo dvoch podmnožinách
+naraz.
+
+\subsection{Segmentácia na okná}
+
+Každé meranie trvá 4,5~s (1800 vzoriek). Podľa zadania sa reže na okná dĺžky
+1~s (400 vzoriek) s posunom 0,5~s (200 vzoriek), čo dáva
+$(1800-400)/200 + 1 = 8$ okien na meranie. Výsledkom je pole tvaru
+$(n_{\text{okien}}, 400, 6)$.
+
+\begin{table}[H]
+    \centering
+    \caption{Veľkosť jednotlivých množín pre jedno rozdelenie}
+    \label{tab:data}
+    \begin{tabular}{lccc}
+        \toprule
+        Množina & Meraní & Okien & Okien na triedu \\
+        \midrule
+        Trénovacia  & 60 & 480 & 80 \\
+        Validačná   & 12 & 96  & 16 \\
+        Testovacia  & 12 & 96  & 16 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Trieda je teda dokonale vyvážená (rovnaký počet okien pre každý terén), čo
+zjednodušuje interpretáciu metrík -- náhodné hádanie by dosiahlo 16,7~\%.
+Zároveň je dataset veľmi malý: 480 trénovacích okien pochádzajúcich len zo
+60 meraní. Táto skutočnosť ovplyvnila návrh všetkých modelov -- prioritou bola
+regularizácia, nie kapacita siete.
+
+\subsection{Extrakcia príznakov pre SVM a MLP}
+
+Pre modely s ručnou extrakciou sa z každého okna počíta 9 príznakov v časovej
+oblasti na každý kanál:
+
+\begin{itemize}
+    \item \textbf{MAV} -- priemerná absolútna hodnota, $\frac{1}{N}\sum |x_i|$,
+    \item \textbf{RMS} -- efektívna hodnota, $\sqrt{\frac{1}{N}\sum x_i^2}$,
+    \item \textbf{WL} -- dĺžka priebehu, $\sum |x_{i+1} - x_i|$,
+    \item \textbf{NZC} -- počet prechodov nulou (s prahom proti šumu),
+    \item \textbf{NSSC} -- počet zmien sklonu (lokálnych extrémov),
+    \item \textbf{WAMP} -- počet zmien amplitúdy nad prahom,
+    \item \textbf{MAX}, \textbf{MIN}, \textbf{PTP} -- maximum, minimum a rozkmit.
+\end{itemize}
+
+Pri 6 kanáloch vzniká vektor s $9 \times 6 = 54$ príznakmi. MAV, RMS a WL
+popisujú energiu vibrácií (mäkký piesok tlmí, dlažba budí ostré nárazy), NZC,
+NSSC a WAMP nepriamo zachytávajú frekvenčný obsah signálu.
+
+Oba modely dostávajú \emph{identický} vstup, takže rozdiel v ich výsledkoch
+pochádza výlučne z modelu a nie z odlišných dát. Príznaky sa škálujú pomocou
+\texttt{StandardScaler}, pričom parametre škálovania sa počítajú \textbf{len
+z trénovacej množiny} -- inak by do modelu unikla informácia o testovacích
+dátach.
+
+\section{Modely s ručne navrhnutými príznakmi}
+\label{sec:rucne}
+
+\subsection{SVM}
+
+Ako referenčný klasický model bol použitý \texttt{SVC} zo scikit-learn.
+Porovnaných bolo šesť nastavení -- lineárne jadro s $C \in \{1, 10\}$, RBF
+jadro s $C \in \{1, 10, 100\}$ a polynomiálne jadro. Najlepšiu validačnú
+úspešnosť dosiahlo lineárne jadro s $C = 1{,}0$, čo naznačuje, že 54 príznakov
+oddeľuje triedy takmer lineárne a zložitejšie jadro prináša len riziko
+preučenia.
+
+\obrazok[0.95\textwidth]{img/svm_hyperparam.png}{SVM -- porovnanie nastavení
+jadra a parametra $C$}{fig:svm-hyper}
+
+\subsection{MLP}
+
+Viacvrstvový perceptrón dostáva rovnakých 54 príznakov. Testované boli štyri
+štruktúry (jedna skrytá vrstva 32 neurónov; 64--32; 64--32 bez Dropoutu;
+128--64--32 s Dropoutom 0,4) a osem kombinácií parametrov trénovania
+(optimalizátor SGD s momentom vs.\ AdamW, learning rate $10^{-2}$ až $10^{-4}$,
+veľkosť dávky 16 a 32, počet epoch 10--20).
+
+Z porovnania parametrov trénovania (Obr.~\ref{fig:mlp-hyper}) vyplynuli dva
+závery. Optimalizátor AdamW konverguje spoľahlivejšie než SGD s momentom a je
+podstatne menej citlivý na voľbu learning rate. Samotný learning rate je
+najdôležitejší parameter -- pri $10^{-4}$ model po 20 epochách ani zďaleka
+nedokonverguje (70,8~\%), pri $10^{-3}$ až $10^{-2}$ dosahuje okolo 94~\%.
+
+\obrazoknasirku{img/mlp_hyperparam.png}{MLP -- priebeh trénovania pri
+rôznych parametroch trénovania}{fig:mlp-hyper}
+
+Porovnanie štruktúr (Obr.~\ref{fig:mlp-arch}) ukázalo, že najlepšie obstála
+sieť 64--32 \emph{bez} Dropoutu. Pri takto malej sieti a krátkom trénovaní
+(15 epoch) Dropout skôr spomaľuje učenie, než by bránil preučeniu -- regularizáciu
+tu dostatočne zabezpečuje už samotná veľkosť siete a nízky počet epoch.
+
+\obrazoknasirku{img/mlp_architecture.png}{MLP -- porovnanie štruktúr
+siete vrátane vplyvu Dropout vrstvy}{fig:mlp-arch}
+
+\section{Modely s automatickou extrakciou príznakov}
+\label{sec:auto}
+
+\subsection{CNN}
+
+Konvolučná sieť pracuje priamo so surovým oknom $(400 \times 6)$. Architektúru
+tvoria bloky \texttt{Conv1d $\rightarrow$ BatchNorm $\rightarrow$ ReLU
+$\rightarrow$ MaxPool}, po ktorých nasleduje Global Average Pooling a dve plne
+prepojené vrstvy.
+
+Kľúčové zistenie z porovnania architektúr (Obr.~\ref{fig:cnn-arch}) sa týka
+práve poolingu: varianta s \texttt{Flatten} namiesto Global Average Poolingu
+dosiahla len 88,5~\% oproti 96,5~\%. Flatten totiž vedie na vstup do plne
+prepojenej vrstvy s rozmerom „počet filtrov $\times$ zvyšná dĺžka``, teda
+rádovo tisíce parametrov navyše, čo je pri 480 trénovacích oknách priama cesta
+k preučeniu. Global Average Pooling tento rozmer zredukuje na počet filtrov
+a zároveň robí model necitlivým na to, kde presne v okne sa daný vzor vyskytol.
+Prínosná bola aj BatchNorm vrstva (+2 p.\,b.), zväčšenie siete na tri bloky
+už nie.
+
+\obrazoknasirku{img/cnn_architecture.png}{CNN -- porovnanie
+architektúr}{fig:cnn-arch}
+
+\obrazoknasirku{img/cnn_hyperparam.png}{CNN -- priebeh trénovania pri
+rôznych parametroch trénovania}{fig:cnn-hyper}
+
+\subsection{LSTM}
+\label{sec:lstm}
+
+\subsubsection{Prvá verzia a jej zlyhanie}
+
+Prvá, „učebnicová`` implementácia posielala do siete okno ako sekvenciu
+400 časových krokov po 6 kanáloch a klasifikovala z posledného skrytého stavu
+$h_n$. Dosiahla len \textbf{58,1~\%} úspešnosti na testovacích dátach, zatiaľ
+čo ostatné tri modely sa pohybovali okolo 95~\%. Rozbor ukázal tri príčiny:
+
+\begin{enumerate}
+    \item \textbf{Príliš dlhá sekvencia.} Cez 400 krokov sa gradient pri spätnom
+          šírení rozptýli a sieť sa pri 480 trénovacích oknách nestihne naučiť
+          užitočnú reprezentáciu.
+    \item \textbf{Nevhodný spôsob čítania výstupu.} Terén sa v signáli prejavuje
+          ako \emph{textúra vibrácií} rozložená po celom okne, nie ako jedna
+          udalosť na jeho konci. Posledný skrytý stav $h_n$ je však ovplyvnený
+          hlavne poslednými vzorkami, takže väčšina okna sa fakticky zahodí.
+    \item \textbf{Učenie sa nepodstatnej informácie.} Okno je stacionárny úsek
+          vibrácií; to, v ktorej fáze signálu okno začína, o teréne nevypovedá
+          nič, sieť sa však túto fázu učí spolu s užitočnou informáciou.
+\end{enumerate}
+
+\subsubsection{Úpravy modelu}
+
+Na odstránenie uvedených príčin boli do modelu doplnené tri mechanizmy, ktorých
+prínos bol samostatne overený.
+
+\paragraph{Pooling cez čas.} Namiesto posledného skrytého stavu sa klasifikuje
+zo spojenia \emph{priemeru} a \emph{maxima} výstupov LSTM cez všetky časové
+kroky. Priemer zachytáva celkovú textúru okna, maximum výrazné jednorazové
+nárazy (kamienky, dlažba). Táto jediná zmena zvýšila úspešnosť z 57,5~\% na
+89,8~\% (Obr.~\ref{fig:lstm-input}) a je teda hlavnou príčinou zlepšenia.
+
+\paragraph{Rámcovanie vstupu.} Okno sa dá preskupiť tak, že jeden časový krok
+siete obsahuje $k$ po sebe idúcich vzoriek zo všetkých kanálov -- napríklad
+$(400, 6) \rightarrow (80, 30)$ pre $k = 5$. Ide o čistý \texttt{reshape}, nie
+o ručne počítané príznaky, takže charakter automatickej extrakcie zostáva
+zachovaný. V kombinácii s poolingom cez čas však už rámcovanie ďalšie zlepšenie
+neprinieslo (88,5~\% pre $k=5$ oproti 89,8~\% pre $k=1$), preto finálny model
+pracuje s plnou sekvenciou. Výrazne pomáha len vtedy, keď sa klasifikuje
+z posledného skrytého stavu (57,5~\% $\rightarrow$ 80,8~\%). Možnosť ostala
+v kóde ako parameter -- pri $k=5$ je tréning približne päťkrát rýchlejší za
+cenu asi jedného percentuálneho bodu.
+
+\obrazoknasirku{img/lstm_input.png}{LSTM -- porovnanie vstupnej
+reprezentácie a spôsobu čítania výstupu}{fig:lstm-input}
+
+\paragraph{Augmentácia trénovacích dát.} Na každú trénovaciu dávku sa aplikuje
+náhodný cyklický posun okna v čase, náhodné preškálovanie amplitúdy zvlášť pre
+každý kanál ($\pm 10$~\%) a slabý gaussovský šum. Cyklický posun priamo rieši
+tretiu príčinu zlyhania -- posunuté okno je stále to isté meranie toho istého
+terénu, takže sa sieť prestane učiť konkrétnu fázu signálu. Škálovanie
+amplitúdy simuluje mierne odlišné uchytenie alebo citlivosť snímača.
+Augmentácia zvýšila úspešnosť z 89,8~\% na 92,3~\% (Obr.~\ref{fig:lstm-aug}),
+pričom najväčší podiel na tom má práve časový posun.
+
+\obrazoknasirku{img/lstm_augmentation.png}{LSTM -- vplyv augmentácie
+trénovacích dát}{fig:lstm-aug}
+
+\subsubsection{Ladenie parametrov a štruktúry}
+
+Nad takto upraveným modelom prebehlo porovnanie parametrov trénovania
+(Obr.~\ref{fig:lstm-hyper}). Potvrdil sa rovnaký obraz ako pri MLP a CNN --
+AdamW jednoznačne poráža SGD s momentom (92,3~\% oproti 85,4~\%) a príliš malý
+learning rate $10^{-4}$ nestačí (73,8~\%). Novým zistením je, že model
+s augmentáciou znesie \emph{podstatne dlhšie trénovanie}: zatiaľ čo pri
+30 epochách dosahoval 87,5~\%, pri 120 až 200 epochách 92,7~\%. Je to očakávané --
+augmentácia robí každú epochu trochu inou, takže sa model nepreučí ani po
+200 epochách.
+
+\obrazoknasirku{img/lstm_hyperparam.png}{LSTM -- priebeh trénovania
+pri rôznych parametroch trénovania}{fig:lstm-hyper}
+
+Pri porovnaní štruktúr (Obr.~\ref{fig:lstm-arch}) dosiahla najlepší výsledok
+obojsmerná LSTM so 128 skrytými jednotkami v jednej vrstve \emph{bez} Dropoutu
+(95,2~\%). Vplyv Dropoutu je tu dobre viditeľný: bez neho 95,2~\%, s hodnotou
+0,3 dosiahol model 92,7~\% a s hodnotou 0,5 len 92,1~\%. Vysvetlenie je rovnaké
+ako pri MLP -- úlohu regularizátora už preberá augmentácia dát, takže ďalšie
+tlmenie aktivácií model iba oslabuje. Druhá vrstva LSTM ani zmenšenie siete na
+64 jednotiek neprispeli, obojsmerné spracovanie pridalo približne 1,7~p.\,b.
+
+\obrazoknasirku{img/lstm_architecture.png}{LSTM -- porovnanie štruktúr
+siete vrátane vplyvu Dropout vrstvy}{fig:lstm-arch}
+
+Finálna konfigurácia je teda: obojsmerná LSTM (128 jednotiek, 1 vrstva),
+pooling priemer + maximum cez čas, bez Dropoutu, optimalizátor AdamW
+s learning rate $10^{-3}$, dávka 16, 200 epoch s kosínusovým rozvrhom learning
+rate a augmentácia (posun + amplitúda + šum).
+
+\section{Výsledky a porovnanie}
+\label{sec:vysledky}
+
+\subsection{Súhrnné porovnanie modelov}
+
+Každý model bol v najlepšej konfigurácii spustený na 5 nezávislých rozdeleniach
+dát. Tabuľka~\ref{tab:porovnanie} uvádza priemer a smerodajnú odchýlku metrík
+z týchto piatich behov, Obr.~\ref{fig:porovnanie} to isté vizuálne aj s rozpätím
+minimum--maximum.
+
+\begin{table}[H]
+    \centering
+    \caption{Porovnanie modelov -- priemer $\pm$ smerodajná odchýlka z 5 rozdelení}
+    \label{tab:porovnanie}
+    \footnotesize
+    \begin{tabular}{llcccc}
+        \toprule
+        Model & Vstup & VAL acc & TEST acc & TEST prec & TEST recall \\
+        \midrule
+        SVM  & 54 príznakov   & 96,46 $\pm$ 2,52 & \textbf{96,25 $\pm$ 3,88} & 96,99 & 96,25 \\
+        LSTM & surový signál  & 95,21 $\pm$ 3,40 & 95,63 $\pm$ 2,59 & 95,91 & 95,63 \\
+        MLP  & 54 príznakov   & 96,04 $\pm$ 2,02 & 95,42 $\pm$ 3,27 & 96,34 & 95,42 \\
+        CNN  & surový signál  & 96,46 $\pm$ 3,46 & 95,21 $\pm$ 5,34 & 96,30 & 95,21 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\obrazok[0.95\textwidth]{img/comparison_models.png}{Porovnanie modelov --
+priemerná úspešnosť z 5 rozdelení, úsečky vyznačujú rozpätie
+minimum--maximum}{fig:porovnanie}
+
+\begin{table}[H]
+    \centering
+    \caption{Rozptyl testovacej úspešnosti naprieč piatimi rozdeleniami}
+    \label{tab:rozptyl}
+    \footnotesize
+    \begin{tabular}{lccccc}
+        \toprule
+        Model & min & max & priemer & std & Najlepšia konfigurácia \\
+        \midrule
+        SVM  & 88,54 & 98,96 & 96,25 & 3,88 & \texttt{linear, C=1.0} \\
+        LSTM & 90,62 & 97,92 & 95,63 & \textbf{2,59} & \texttt{h=128, bidir, meanmax} \\
+        MLP  & 90,62 & 100,00 & 95,42 & 3,27 & \texttt{64--32, no dropout} \\
+        CNN  & 85,42 & 100,00 & 95,21 & 5,34 & \texttt{16--32, GAP, BN} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Diskusia}
+
+\paragraph{Ručné príznaky vs.\ automatická extrakcia.} Rozdiely medzi modelmi
+(95,2~\% až 96,3~\%) sú menšie než smerodajné odchýlky jednotlivých modelov
+(2,6 až 5,3~p.\,b.). Na týchto dátach teda \textbf{žiadny z prístupov nie je
+preukázateľne lepší} -- tvrdenie, že „SVM vyhralo``, by nebolo štatisticky
+podložené. Je to pochopiteľné: 54 ručných príznakov (energia a hrubá frekvenčná
+charakteristika vibrácií) zachytáva prakticky všetko, čo je v jednosekundovom
+okne pre rozlíšenie povrchu podstatné, takže automatická extrakcia nemá kde
+získať náskok.
+
+\paragraph{Stabilita naprieč rozdeleniami.} Zaujímavejší než priemer je rozptyl.
+Najstabilnejší je LSTM (std 2,59), najmenej stabilná je CNN (std 5,34, najhorší
+beh 85,4~\%). Pri iba 12 testovacích meraniach na jeden beh stačí niekoľko
+nesprávne klasifikovaných okien na výkyv o niekoľko percentuálnych bodov, takže
+nízky rozptyl je z praktického hľadiska cennejší než o pol percenta vyšší
+priemer. Nízky rozptyl LSTM pripisujeme augmentácii, ktorá model núti spoliehať
+sa na vlastnosti nezávislé od konkrétneho merania.
+
+\paragraph{Cena za výsledok.} Modely sa výrazne líšia výpočtovou náročnosťou.
+SVM sa natrénuje v sekundách na CPU, MLP za desiatky sekúnd, CNN za jednotky
+minút a finálny LSTM (200 epoch nad sekvenciou 400 krokov, GPU) trvá pri
+prechode všetkých porovnaní približne 45 minút. Pri prakticky zhodnej úspešnosti
+je teda SVM nad ručnými príznakmi jednoznačne najhospodárnejšou voľbou a LSTM
+najdrahšou.
+
+\subsection{Kontingenčné matice}
+\label{sec:kontingencne-matice}
+
+Pre každý model sa teraz z finálnych 5 behov ukladá kompletná sada kontingenčných
+matíc do \texttt{results/<model>/}: jedna pre \textbf{každý jednotlivý beh}
+(\texttt{runs/split\_XX\_confusion.png} -- spolu 5), jedna \textbf{súčtová}
+(spojenie predikcií zo všetkých 5 behov, teda $5 \times 96 = 480$ testovacích
+okien) a jedna pre \textbf{najlepší beh} (podľa testovacej accuracy). Predtým sa
+ukladala len jedna matica, a to z ľubovoľne posledného behu (\texttt{split\_04}) --
+čo pri variabilite medzi behmi (kapitola~\ref{sec:vysledky}) skresľovalo obraz
+o chybách modelu.
+
+Nižšie sú preto súčtové matice (najreprezentatívnejšie -- pokrývajú všetky
+testovacie meranie naprieč piatimi rozdeleniami), každá v absolútnych počtoch
+aj v percentách v rámci skutočnej triedy.
+
+\obrazok[0.95\textwidth]{img/lstm_confusion_combined.png}{LSTM -- súčtová
+kontingenčná matica (5 behov spolu, 480 testovacích okien)}{fig:cm-lstm}
+
+Pri LSTM sú tri triedy (tráva, kamienky, piesok) rozpoznané prakticky bezchybne.
+Chyby sa sústreďujú medzi \emph{paving\_stone}, \emph{concrete}
+a \emph{running\_track} -- teda medzi tri tvrdé, rovné a hladké povrchy, ktoré
+budia podobne nízke a pravidelné vibrácie. Naopak sypké a nerovné povrchy majú
+výrazne odlišný charakter signálu a nemýlia sa. Rovnaký vzor chýb sa objavuje
+aj u ostatných modelov, čo naznačuje, že ide o vlastnosť dát, nie konkrétneho
+klasifikátora.
+
+\obrazok[0.95\textwidth]{img/cnn_confusion_combined.png}{CNN -- súčtová
+kontingenčná matica (5 behov spolu, 480 testovacích okien)}{fig:cm-cnn}
+
+\obrazok[0.95\textwidth]{img/svm_confusion_combined.png}{SVM -- súčtová
+kontingenčná matica (5 behov spolu, 480 testovacích okien)}{fig:cm-svm}
+
+\obrazok[0.95\textwidth]{img/mlp_confusion_combined.png}{MLP -- súčtová
+kontingenčná matica (5 behov spolu, 480 testovacích okien)}{fig:cm-mlp}
+
+Matica \textbf{najlepšieho} behu (spolu s maticami všetkých 5 jednotlivých behov)
+je uložená pri každom modeli ako \texttt{<model>\_confusion\_matrix.png}
+(resp. \texttt{runs/split\_XX\_confusion.png}) -- v texte sa neuvádza zvlášť,
+keďže ukazuje len jeden (priaznivo vybraný) beh, zatiaľ čo súčtová matica vyššie
+je štatisticky robustnejšia.
+
+\subsection{Prínos prepracovania LSTM}
+
+Obr.~\ref{fig:lstm-old} a Obr.~\ref{fig:lstm-new} porovnávajú úspešnosť pôvodnej
+a upravenej verzie LSTM naprieč piatimi rozdeleniami. Priemerná testovacia
+úspešnosť vzrástla z 58,13~\% na 95,63~\%, teda o 37,5~p.\,b., pričom sa
+súčasne znížil rozptyl (3,45 $\rightarrow$ 2,59) -- model je nielen presnejší,
+ale aj stabilnejší.
+
+\obrazok[0.8\textwidth]{img/lstm_old_splits.png}{Pôvodná verzia LSTM --
+úspešnosť naprieč 5 rozdeleniami (priemer 58,13~\%)}{fig:lstm-old}
+
+\obrazok[0.8\textwidth]{img/lstm_splits.png}{Upravená verzia LSTM --
+úspešnosť naprieč 5 rozdeleniami (priemer 95,63~\%)}{fig:lstm-new}
+
+\obrazoknasirku{img/lstm_final_curves.png}{Upravená verzia LSTM --
+priebeh trénovania naprieč 5 rozdeleniami}{fig:lstm-curves}
+
+\section{Poznámky k metodike a obmedzenia}
+\label{sec:obmedzenia}
+
+Pre korektnosť interpretácie výsledkov je potrebné uviesť niekoľko obmedzení
+použitého postupu.
+
+\begin{itemize}
+    \item \textbf{Rozsah dát.} 84 meraní a 480 trénovacích okien je veľmi málo.
+          Pri 96 testovacích oknách zodpovedá jedno nesprávne klasifikované okno
+          približne 1~p.\,b. úspešnosti, preto treba rozdiely menšie než
+          niekoľko percentuálnych bodov považovať za šum.
+    \item \textbf{Výber konfigurácie.} Pri CNN a LSTM sa najlepšia konfigurácia
+          vyberala podľa priemeru validačnej úspešnosti zo všetkých 5 rozdelení,
+          pri SVM a MLP len podľa \texttt{split\_00}. Porovnanie modelov medzi
+          sebou je preto mierne v neprospech SVM a MLP -- ich hyperparametre
+          boli ladené na hlučnejšom odhade.
+    \item \textbf{Kontingenčné matice} v kapitole~\ref{sec:kontingencne-matice}
+          sú súčtové (zo všetkých 5 behov, 480 okien), takže na rozdiel od
+          matice jedného behu nezávisia od toho, ktoré meranie náhodou padlo
+          do ktorého rozdelenia.
+    \item \textbf{Testovacie dáta} neboli použité pri žiadnom rozhodovaní o
+          modeli -- všetky výbery prebehli výlučne na validačnej množine.
+          Uvádzané testovacie metriky sú teda nezaujatým odhadom.
+\end{itemize}
+
+\section{Implementácia}
+\label{sec:implementacia}
+
+Projekt je napísaný v Pythone (NumPy, pandas, scikit-learn, PyTorch,
+matplotlib). Štruktúra zdrojových súborov zodpovedá jednotlivým krokom
+spracovania:
+
+\begin{table}[H]
+    \centering
+    \caption{Štruktúra zdrojových súborov}
+    \label{tab:struktura}
+    \footnotesize
+    \begin{tabular}{ll}
+        \toprule
+        Súbor & Obsah \\
+        \midrule
+        \texttt{config.py}       & centrálna konfigurácia (cesty, frekvencie, okno, semienko) \\
+        \texttt{data\_loading.py} & načítanie CSV a katalóg meraní \\
+        \texttt{splitting.py}    & rozdelenie na train/val/test na úrovni meraní \\
+        \texttt{windowing.py}    & segmentácia na okná 1~s s posunom 0,5~s \\
+        \texttt{features.py}     & výpočet 54 časových príznakov \\
+        \texttt{models/svm\_model.py}  & SVM \\
+        \texttt{models/mlp\_model.py}  & MLP + spoločná tréningová slučka \\
+        \texttt{models/cnn\_model.py}  & 1D CNN + normalizácia po kanáloch \\
+        \texttt{models/lstm\_model.py} & LSTM + augmentácia \\
+        \texttt{models/evaluate.py}    & metriky, grafy, ukladanie logov \\
+        \texttt{models/compare\_models.py} & súhrnné porovnanie všetkých modelov \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Všetky modely používajú rovnaké funkcie z \texttt{evaluate.py} na výpočet
+metrík, takže ich výsledky sú priamo porovnateľné. Každý beh si navyše ukladá
+kompletný výpis z konzoly do súboru \texttt{results/<model>/<model>\_training\_log.md},
+z ktorého skript \texttt{compare\_models.py} bez opätovného trénovania poskladá
+súhrnnú tabuľku, CSV a graf použitý v tejto dokumentácii
+(Obr.~\ref{fig:porovnanie}).
+
+Pre finálnu konfiguráciu každého modelu (5 behov) sa okrem toho do
+\texttt{results/<model>/runs/} ukladá kompletná surová stopa každého behu:
+predikcie na validačných aj testovacích dátach (\texttt{split\_XX\_predictions.npz}),
+priebeh trénovania po epochách (\texttt{split\_XX\_history.json}, pri sieťových
+modeloch), čas trénovania a metriky (\texttt{split\_XX\_meta.json}) a súhrnná
+tabuľka \texttt{runs.csv} s riadkami pre všetkých 5 behov aj s min/max/priemer/std.
+Vďaka tomu sa dá čokoľvek dopočítať dodatočne (napr. súčtová kontingenčná
+matica v kapitole~\ref{sec:kontingencne-matice}) bez opätovného trénovania.

@@ -5,3 +5,17 @@ __pycache__/
 # --- Environment premenné / tajné kľúče ---
 .env
 .venv/
+
+# --- LaTeX build artifacts ---
+Latex/.build/
+Latex/*.aux
+Latex/*.bbl
+Latex/*.bcf
+Latex/*.blg
+Latex/*.fdb_latexmk
+Latex/*.fls
+Latex/*.log
+Latex/*.out
+Latex/*.run.xml
+Latex/*.synctex.gz
+Latex/*.toc

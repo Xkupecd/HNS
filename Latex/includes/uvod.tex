@@ -1,0 +1,26 @@
+Cieľom zadania je klasifikovať typ terénu, po ktorom sa pohybuje robotická
+platforma, výlučne zo signálov inerciálnych snímačov -- trojosového
+akcelerometra (ACC) a trojosového gyroskopu (GYR). Úloha zodpovedá reálnemu
+scenáru, v ktorom robot nemá k dispozícii kameru ani mapu a musí povrch
+rozpoznať „hmatom``, teda z vibrácií prenášaných do podvozku.
+
+Zadanie požaduje porovnať dva odlišné prístupy ku klasifikácii:
+
+\begin{itemize}
+    \item \textbf{modely s ručne navrhnutými príznakmi} -- zo surového signálu
+          sa najprv vypočítajú štatistické príznaky v časovej oblasti a tie
+          vstupujú do klasifikátora (SVM, MLP),
+    \item \textbf{modely s automatickou extrakciou príznakov} -- sieť dostane
+          surový priebeh signálu a reprezentáciu si vytvorí sama (LSTM, CNN).
+\end{itemize}
+
+Pre každý model bolo podľa zadania potrebné porovnať priebehy trénovania pri
+rôznych parametroch trénovania, porovnať viacero štruktúr siete vrátane vplyvu
+Dropout vrstvy, a najlepšiu konfiguráciu spustiť päťkrát na nezávislých
+rozdeleniach dát so štatistickým vyhodnotením úspešnosti, presnosti
+a senzitivity.
+
+Dokument popisuje spracovanie dát, návrh a ladenie všetkých štyroch modelov,
+dosiahnuté výsledky a ich porovnanie. Osobitná pozornosť je venovaná modelu
+LSTM, ktorý v prvej verzii výrazne zaostával za ostatnými a bolo ho potrebné
+prepracovať; rozbor príčin a riešenia je v kapitole~\ref{sec:lstm}.

@@ -1,0 +1,14 @@
+{
+  "split": 1,
+  "train_seconds": 0.259,
+  "val": {
+    "accuracy": 0.9479166666666666,
+    "precision": 0.9551656920077972,
+    "recall": 0.9479166666666666
+  },
+  "test": {
+    "accuracy": 0.9375,
+    "precision": 0.9470588235294118,
+    "recall": 0.9375
+  }
+}

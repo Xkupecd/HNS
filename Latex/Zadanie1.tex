@@ -1,0 +1,91 @@
+\documentclass{FEIstyle}
+
+\FEIauthor{Bc. Dominik Kupec}
+\FEItitle{Klasifikácia terénu zo signálov akcelerometra a gyroskopu}
+\FEIpredmet{HNS -- Zadanie 1}
+\FEIdate{2025/2026}
+
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{multirow}
+\renewcommand{\figurename}{Obr.}
+
+% Obrázok sa vloží, len ak existuje - inak sa vysádza rámček s upozornením
+% (dokument sa teda preloží aj vtedy, keď niektorý model ešte nebol spustený).
+\newcommand{\safeincludegraphics}[2][]{%
+    \IfFileExists{#2}{%
+        \includegraphics[#1]{#2}%
+    }{%
+        \fbox{\parbox{0.7\textwidth}{\centering Chýbajúci obrázok: \texttt{\detokenize{#2}}}}%
+    }%
+}
+
+% Skratka pre obrázok na šírku textu s popisom a menovkou
+\newcommand{\obrazok}[4][\textwidth]{%
+    \begin{figure}[H]
+        \centering
+        \safeincludegraphics[width=#1]{#2}
+        \caption{#3}
+        \label{#4}
+    \end{figure}%
+}
+
+% Obrázok otočený na šírku, na samostatnej strane. Používa sa pre porovnávacie
+% grafy priebehu trénovania (2x2 panely) - na výšku strany by boli popisy osí
+% a legenda prakticky nečitateľné, otočením sa obrázok zväčší zhruba o polovicu.
+\newcommand{\obrazoknasirku}[4][0.95\textheight]{%
+    \begin{sidewaysfigure}
+        \centering
+        \safeincludegraphics[width=#1]{#2}
+        \caption{#3}
+        \label{#4}
+    \end{sidewaysfigure}%
+}
+
+\definecolor{codegreen}{rgb}{0,0.5,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.97,0.97,0.97}
+
+\lstset{
+    language=Python,
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{blue},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    frame=tb,
+    tabsize=2
+}
+
+\begin{document}
+
+\frontmatter
+
+\FEIcover
+\FEIcontent
+
+\mainmatter
+
+\FEIintroduction{includes/uvod}
+
+\FEIcore{includes/jadro}
+\FEIconclusion{includes/zaver}
+
+\backmatter
+
+\end{document}

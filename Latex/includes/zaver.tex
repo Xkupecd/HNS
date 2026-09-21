@@ -1,0 +1,32 @@
+Cieľom zadania bolo klasifikovať šesť typov terénu zo signálov akcelerometra
+a gyroskopu a porovnať prístup s ručne navrhnutými príznakmi (SVM, MLP)
+s prístupom, kde si príznaky extrahuje sieť sama (LSTM, CNN).
+
+Všetky štyri modely dosiahli na testovacích dátach priemernú úspešnosť medzi
+95,2~\% a 96,3~\%, pričom rozdiely medzi nimi sú menšie než smerodajné odchýlky
+jednotlivých modelov. Na tomto datasete teda ani jeden z porovnávaných prístupov
+nie je preukázateľne lepší. Vzhľadom na to, že SVM nad 54 ručnými príznakmi
+dosiahlo rovnaký výsledok za zlomok výpočtového času, je pre túto úlohu
+najhospodárnejšou voľbou. Najstabilnejším modelom naprieč rozdeleniami bol
+upravený LSTM (smerodajná odchýlka 2,59~p.\,b.).
+
+Najpoučnejšou časťou práce bolo prepracovanie modelu LSTM. Jeho prvá verzia,
+ktorá posielala do siete 400 časových krokov a klasifikovala z posledného
+skrytého stavu, dosahovala len 58,1~\%. Analýza ukázala, že problém nebol
+v kapacite siete ani v parametroch trénovania, ale v \emph{spôsobe, akým model
+čítal signál}. Nahradenie posledného skrytého stavu poolingom cez celú
+sekvenciu zvýšilo úspešnosť o vyše 32~p.\,b., augmentácia trénovacích dát
+(najmä cyklický časový posun) pridala ďalšie percentuálne body a odstránenie
+Dropoutu, ktorého úlohu už prevzala augmentácia, dovŕšilo výsledok na 95,6~\%.
+
+Z porovnania architektúr vyplynul spoločný motív pre všetky neurónové modely:
+pri 480 trénovacích oknách rozhodovala regularizácia a vhodná redukcia rozmeru,
+nie veľkosť siete. Potvrdzuje to Global Average Pooling pri CNN (+8~p.\,b. oproti
+variante s Flatten), pooling cez čas pri LSTM aj to, že najlepšie štruktúry MLP
+aj LSTM boli tie bez Dropout vrstvy -- v oboch prípadoch preto, že regularizáciu
+už zabezpečoval iný mechanizmus.
+
+Ako ďalší krok by dávalo zmysel overiť modely na väčšom množstve meraní,
+prípadne vyhodnotiť predikcie agregované cez celé meranie (hlasovanie z ôsmich
+okien) namiesto jednotlivých okien -- v praktickom nasadení robot rozhoduje
+o type povrchu priebežne z viacerých po sebe idúcich okien, nie z jediného.

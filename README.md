@@ -1,9 +1,9 @@
 # Zadanie 1 – Klasifikácia outdoor terénu (HNS)
 
 Klasifikácia terénu (betón, tráva, kamienky, piesok, dlažobný kameň, bežecká
-dráha) zo signálov akcelerometra a gyroskopu, pomocou SVM, MLP a CNN
+dráha) zo signálov akcelerometra a gyroskopu, pomocou SVM, MLP, LSTM a CNN
 (porovnanie ručne extrahovaných príznakov vs. automatickej extrakcie cez
-konvolučné vrstvy).
+rekurentné/konvolučné vrstvy).
 
 ## Rýchly štart
 
@@ -21,11 +21,9 @@ pip install numpy pandas scikit-learn torch matplotlib
 cd src
 python -m models.svm_model
 python -m models.mlp_model
+python -m models.lstm_model
 python -m models.cnn_model
 ```
-
-> Zatiaľ nemáme `requirements.txt` – ak ho niekto z nás pridá
-> (`pip freeze > requirements.txt`), stačí `pip install -r requirements.txt`.
 
 ## Dáta
 
@@ -46,7 +44,7 @@ Ak by si si chcel/a dáta vygenerovať odznova (napr. po zmene `config.py`):
    python windowing.py   # z rozdelení vyrobí sliding-window okná (.npy)
    python features.py    # z okien vypočíta časové príznaky pre SVM/MLP (.npy)
    ```
-   CNN si okná (`windowing.py`) načíta priamo, príznaky (`features.py`)
+   CNN a LSTM si okná (`windowing.py`) načítajú priamo, príznaky (`features.py`)
    potrebujú iba SVM a MLP.
 
 ## Ako to celé funguje (pipeline)
@@ -61,7 +59,7 @@ splitting.py – rozdelí MERANIA (nie okná!) na train/val/test, 10/2/2 na ter�
 data/processed/splits/split_XX/{train,val,test}/<terén>/SEN_x_y_z.csv
         │  windowing.py – sliding window: 1 s okno, posun 0.5 s (400 vzoriek, krok 200)
         ▼
-data/processed/windows/split_XX/{X,y,groups}_{train,val,test}.npy   ──► CNN
+data/processed/windows/split_XX/{X,y,groups}_{train,val,test}.npy   ──► CNN, LSTM
         │  features.py – 9 príznakov na kanál (MAV, NZC, NSSC, RMS, WL, WAMP, MAX, MIN, PTP)
         ▼
 data/processed/features/split_XX/{features,y}_{train,val,test}.npy ──► SVM, MLP
@@ -79,7 +77,7 @@ Zadanie1/
 │   ├── raw/                     # (negitované) surové CSV z databázy
 │   └── processed/
 │       ├── splits/               # (negitované) medzikrok - CSV rozdelené na train/val/test
-│       ├── windows/               # sliding-window okná (.npy) - vstup pre CNN
+│       ├── windows/               # sliding-window okná (.npy) - vstup pre CNN, LSTM
 │       └── features/              # časové príznaky (.npy) - vstup pre SVM/MLP
 ├── src/
 │   ├── config.py                 # konštanty: cesty, fs, terény, okno, seedy, prahy
@@ -90,17 +88,22 @@ Zadanie1/
 │   └── models/
 │       ├── svm_model.py           # SVM nad príznakmi (baseline)
 │       ├── mlp_model.py           # MLP nad rovnakými príznakmi ako SVM
+│       ├── lstm_model.py          # LSTM priamo nad signálom (okná)
 │       ├── cnn_model.py           # 1D CNN priamo nad signálom (okná)
-│       └── evaluate.py            # accuracy/precision/recall, kontingenčná matica
-├── results/figures/               # uložené confusion matrix obrázky
+│       └── evaluate.py            # accuracy/precision/recall, kontingenčná matica, grafy, log
+├── results/
+│   ├── svm/    # <model>_confusion_matrix.png, hyperparam_comparison.png,
+│   ├── mlp/    # final_splits_accuracy.png, (pri MLP/LSTM/CNN aj) *_training_curves.png,
+│   ├── lstm/   # a <model>_training_log.md - pozri "Spúšťanie modelov" nižšie
+│   └── cnn/
 ├── HNS_Zadanie1.pdf                # zadanie
 └── utils.zip                       # demo kód z predmetu (referencia k features.py)
 ```
 
-**Poznámka:** `lstm_model.py`, generický `train.py`/`experiments/` runner a
-`requirements.txt` zatiaľ nie sú hotové – ak na tom niekto pracuje, dajte
-vedieť nech sa nebijeme v tom istom súbore. Zatiaľ každý model (`svm_model.py`,
-`mlp_model.py`, `cnn_model.py`) sa spúšťa priamo ako skript a má vlastný
+**Poznámka:** generický `train.py`/`experiments/` runner a `requirements.txt`
+zatiaľ nie sú hotové – ak na tom niekto pracuje, dajte vedieť nech sa nebijeme
+v tom istom súbore. Zatiaľ každý model (`svm_model.py`, `mlp_model.py`,
+`lstm_model.py`, `cnn_model.py`) sa spúšťa priamo ako skript a má vlastný
 tréningový loop + `if __name__ == "__main__"` blok, ktorý spustí všetkých
 5 splitov a vypíše priemer/min/max metrík.
 
@@ -112,7 +115,28 @@ Spúšťaj vždy z priečinka `src/` (kvôli importom medzi modulmi):
 cd src
 python -m models.svm_model     # alebo: python models/svm_model.py
 python -m models.mlp_model
+python -m models.lstm_model
 python -m models.cnn_model
 ```
 
-Výsledky (kontingenčné matice) sa ukladajú do `results/figures/`.
+Keď sú všetky modely dobehnuté, súhrnné porovnanie sa poskladá z ich logov:
+
+```bash
+python -m models.compare_models
+```
+
+Nič sa pritom netrénuje – skript číta `results/<model>/<model>_training_log.md`
+a uloží do `results/comparison/` tabuľku (`model_comparison.md`), to isté v CSV
+a stĺpcový graf `model_comparison.png` (val vs test, úsečky = min-max).
+
+Výsledky sa ukladajú priamo do `results/<model>/` (bez ďalších podpriečinkov):
+- `<model>_confusion_matrix.png` – kontingenčná matica najlepšieho modelu na testovacích dátach,
+- `hyperparam_training_curves.png` a `architecture_training_curves.png` (MLP/LSTM/CNN) –
+  porovnanie priebehov trénovania (train/val loss a accuracy podľa epoch) pri rôznych
+  tréningových hyperparametroch, resp. architektúrach (SVM nemá epochy, tak namiesto toho
+  má `hyperparam_comparison.png` – stĺpcový graf úspešnosti podľa nastavenia),
+- `final_splits_training_curves.png` (MLP/LSTM/CNN) a `final_splits_accuracy.png` (všetky) –
+  priebeh/úspešnosť naprieč finálnymi 5 behmi (splitmi) najlepšej konfigurácie,
+- `<model>_training_log.md` – kompletný textový výpis z konzoly (všetky porovnávacie
+  tabuľky, priebeh 5 behov, súhrn min/max/priemer) uložený ako .md, presne pre potreby
+  dokumentácie.
