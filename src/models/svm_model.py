@@ -10,8 +10,14 @@ bez štandardizácie by príznaky s veľkým rozsahom úplne prevládli.
 
 StandardScaler sa fituje VÝHRADNE na trénovacích dátach a potom sa aplikuje
 na validačné a testovacie - inak by došlo k úniku informácie z testu do tréningu.
+
+Pre finálnu konfiguráciu (5 behov) sa navyše pre KAŽDÝ beh ukladajú surové
+predikcie a čas trénovania (results/svm/runs/), a kontingenčné matice sa robia
+tri: pre každý beh zvlášť, súčtová (spojenie všetkých 5 behov) a pre najlepší
+beh (predtým sa ukladala len z posledného splitu, čo bolo ľubovoľné).
 """
 import sys
+import time
 from pathlib import Path
 
 # Umožní spustiť tento súbor akokoľvek (python svm_model.py z models/,
@@ -29,9 +35,22 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
-from config import N_SPLITS, RANDOM_SEED
-from evaluate import compute_metrics, format_metrics, print_summary, summarize_runs
+from config import N_SPLITS, RANDOM_SEED, RESULTS_DIR
+from evaluate import (
+    capture_console_to_markdown,
+    compute_metrics,
+    format_metrics,
+    generate_post_run_confusion_matrices,
+    plot_confusion_matrix_pair,
+    plot_runs_bar_chart,
+    print_summary,
+    save_run_artifacts,
+    summarize_runs,
+    write_runs_csv,
+)
 from features import load_features
+
+RESULTS_SVM_DIR = RESULTS_DIR / "svm"
 
 
 def build_svm(kernel: str = "rbf", C: float = 10.0, gamma="scale") -> Pipeline:
@@ -52,13 +71,15 @@ def build_svm(kernel: str = "rbf", C: float = 10.0, gamma="scale") -> Pipeline:
     ])
 
 
-def train_and_evaluate(model: Pipeline, data: dict) -> tuple[dict, dict, np.ndarray, np.ndarray]:
-    """Natrénuje model na train a vyhodnotí na val a test."""
+def train_and_evaluate(model: Pipeline, data: dict) -> tuple[dict, dict, np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
+    """Natrénuje model na train a vyhodnotí na val a test. Vracia aj čas trénovania (s)."""
     X_train, y_train = data["train"]
     X_val, y_val = data["val"]
     X_test, y_test = data["test"]
 
+    t0 = time.perf_counter()
     model.fit(X_train, y_train)
+    train_seconds = time.perf_counter() - t0
 
     y_val_pred = model.predict(X_val)
     y_test_pred = model.predict(X_test)
@@ -66,8 +87,9 @@ def train_and_evaluate(model: Pipeline, data: dict) -> tuple[dict, dict, np.ndar
     return (
         compute_metrics(y_val, y_val_pred),
         compute_metrics(y_test, y_test_pred),
-        y_test,
-        y_test_pred,
+        y_val, y_val_pred,
+        y_test, y_test_pred,
+        train_seconds,
     )
 
 
@@ -91,12 +113,17 @@ def compare_hyperparameters(split_idx: int = 0) -> dict:
     print(f"  {'konfigurácia':<32} {'VAL':<42} {'TEST'}")
 
     best = None
+    cfg_labels, val_accs, test_accs = [], [], []
     for cfg in configs:
         model = build_svm(**cfg)
-        val_metrics, test_metrics, _, _ = train_and_evaluate(model, data)
+        val_metrics, test_metrics, *_ = train_and_evaluate(model, data)
 
         cfg_str = ", ".join(f"{k}={v}" for k, v in cfg.items())
         print(f"  {cfg_str:<32} {format_metrics(val_metrics):<42} {format_metrics(test_metrics)}")
+
+        cfg_labels.append(cfg_str)
+        val_accs.append(val_metrics["accuracy"])
+        test_accs.append(test_metrics["accuracy"])
 
         # Pri zhode vo validačnej úspešnosti rozhoduje priemer precision+recall
         # (samotná accuracy má pri 96 oknách hrubé rozlíšenie ~1 %, takže zhody sú časté)
@@ -106,16 +133,26 @@ def compare_hyperparameters(split_idx: int = 0) -> dict:
 
     cfg_str = ", ".join(f"{k}={v}" for k, v in best["config"].items())
     print(f"\nNajlepšia konfigurácia podľa validačnej úspešnosti: {cfg_str}")
+
+    plot_runs_bar_chart(
+        cfg_labels, val_accs, test_accs,
+        title=f"SVM - porovnanie nastavení (split_{split_idx:02d})",
+        ylabel="Accuracy [%]",
+        filename="hyperparam_comparison.png",
+        out_dir=RESULTS_SVM_DIR,
+    )
+
     return best["config"]
 
 
-def run_multiple_splits(config: dict, n_splits: int = N_SPLITS) -> None:
+def run_multiple_splits(config: dict, n_splits: int = N_SPLITS):
     """
     Spustí najlepšiu konfiguráciu na všetkých dostupných splitoch
-    (zadanie: priemer z 5 opakovaní) a vypíše min/max/priemer metrík.
+    (zadanie: priemer z 5 opakovaní), vypíše min/max/priemer metrík a pre
+    KAŽDÝ beh uloží predikcie + kontingenčnú maticu (results/svm/runs/).
     """
-    val_runs, test_runs = [], []
-    last_y_test, last_y_pred = None, None
+    val_runs, test_runs, train_seconds = [], [], []
+    y_vals, y_val_preds, y_tests, y_test_preds = [], [], [], []
 
     print(f"\n{'=' * 70}")
     print(f"Spustenie najlepšej konfigurácie na {n_splits} rozdeleniach")
@@ -129,34 +166,67 @@ def run_multiple_splits(config: dict, n_splits: int = N_SPLITS) -> None:
             continue
 
         model = build_svm(**config)
-        val_metrics, test_metrics, y_test, y_test_pred = train_and_evaluate(model, data)
+        val_metrics, test_metrics, y_val, y_val_pred, y_test, y_test_pred, secs = train_and_evaluate(model, data)
 
         val_runs.append(val_metrics)
         test_runs.append(test_metrics)
-        last_y_test, last_y_pred = y_test, y_test_pred
+        train_seconds.append(secs)
+        y_vals.append(y_val); y_val_preds.append(y_val_pred)
+        y_tests.append(y_test); y_test_preds.append(y_test_pred)
+
+        save_run_artifacts(
+            RESULTS_SVM_DIR, split_idx, val_metrics, test_metrics,
+            y_val, y_val_pred, y_test, y_test_pred, secs, history=None,
+        )
+        plot_confusion_matrix_pair(
+            y_test, y_test_pred,
+            title=f"SVM - kontingenčná matica (split_{split_idx:02d}, testovacie dáta)",
+            out_dir=RESULTS_SVM_DIR,
+            filename=f"runs/split_{split_idx:02d}_confusion.png",
+            n_okien_info=f"beh split_{split_idx:02d}, {len(y_test)} okien, čas trénovania {secs:.2f} s",
+        )
 
         print(f"  split_{split_idx:02d}:  VAL  {format_metrics(val_metrics)}   |   "
-              f"TEST  {format_metrics(test_metrics)}")
+              f"TEST  {format_metrics(test_metrics)}   |   čas={secs:.2f} s")
 
     if not val_runs:
         print("Žiadny split sa nepodarilo načítať.")
-        return
+        return None
 
-    print_summary(f"SVM - validačné dáta (z {len(val_runs)} behov)", summarize_runs(val_runs))
-    print_summary(f"SVM - testovacie dáta (z {len(test_runs)} behov)", summarize_runs(test_runs))
+    write_runs_csv(RESULTS_SVM_DIR, val_runs, test_runs, train_seconds)
 
-    return last_y_test, last_y_pred
+    val_summary = summarize_runs(val_runs)
+    test_summary = summarize_runs(test_runs)
+    print_summary(f"SVM - validačné dáta (z {len(val_runs)} behov)", val_summary)
+    print_summary(f"SVM - testovacie dáta (z {len(test_runs)} behov)", test_summary)
+
+    plot_runs_bar_chart(
+        [f"split_{i:02d}" for i in range(len(val_runs))],
+        [run["accuracy"] for run in val_runs],
+        [run["accuracy"] for run in test_runs],
+        title="SVM - úspešnosť naprieč 5 behmi (splitmi)",
+        ylabel="Accuracy [%]",
+        filename="final_splits_accuracy.png",
+        out_dir=RESULTS_SVM_DIR,
+        val_summary=val_summary,
+        test_summary=test_summary,
+    )
+
+    # Súčtové matice (5 behov spolu) + matica najlepšieho behu - predtým sa tu
+    # ukladal vždy posledný beh (split_04), čo bolo ľubovoľné.
+    best_idx = generate_post_run_confusion_matrices(
+        "SVM", RESULTS_SVM_DIR, y_vals, y_val_preds, y_tests, y_test_preds, test_runs,
+        best_filename="svm_confusion_matrix.png",
+        combined_test_filename="svm_confusion_matrix_combined.png",
+        combined_val_filename="svm_confusion_matrix_combined_val.png",
+    )
+
+    return best_idx
 
 
 if __name__ == "__main__":
-    best_config = compare_hyperparameters(split_idx=0)
-    result = run_multiple_splits(best_config)
-
-    if result is not None:
-        y_test, y_test_pred = result
-        from evaluate import plot_confusion_matrix
-        plot_confusion_matrix(
-            y_test, y_test_pred,
-            title="SVM - kontingenčná matica (testovacie dáta)",
-            filename="svm_confusion_matrix.png",
-        )
+    with capture_console_to_markdown(
+        "svm_training_log.md", RESULTS_SVM_DIR, title="SVM - priebeh trénovania a vyhodnotenia"
+    ):
+        best_config = compare_hyperparameters(split_idx=0)
+        run_multiple_splits(best_config)

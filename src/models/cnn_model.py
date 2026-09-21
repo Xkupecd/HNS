@@ -13,6 +13,7 @@ sa nededikuje znova - je prevzatá z mlp_model.py, aby mali všetky NN modely
 identickú tréningovú logiku a bolo porovnanie SVM/MLP/LSTM/CNN naozaj fér.
 """
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -26,10 +27,25 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from config import N_SPLITS, RANDOM_SEED
-from evaluate import compute_metrics, format_metrics, plot_confusion_matrix, print_summary, summarize_runs
+from config import N_SPLITS, RANDOM_SEED, RESULTS_DIR
+from evaluate import (
+    capture_console_to_markdown,
+    compute_metrics,
+    format_metrics,
+    generate_post_run_confusion_matrices,
+    plot_confusion_matrix_pair,
+    plot_runs_bar_chart,
+    plot_single_run_training_curve,
+    plot_training_curves_comparison,
+    print_summary,
+    save_run_artifacts,
+    summarize_runs,
+    write_runs_csv,
+)
 from mlp_model import DEVICE, build_optimizer, evaluate_tensors, train_one_epoch
 from windowing import load_windowed_dataset
+
+RESULTS_CNN_DIR = RESULTS_DIR / "cnn"
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +184,10 @@ def train_model(
     n_classes: int = 6,
     verbose: bool = False,
 ):
-    """Natrénuje jednu CNN na danom splite. Vracia rovnakú štruktúru ako mlp_model.train_model."""
+    """
+    Natrénuje jednu CNN na danom splite. Vráti
+    (model, history, val_metrics, test_metrics, y_val, val_pred, y_test, test_pred, train_seconds).
+    """
     torch.manual_seed(RANDOM_SEED)
 
     train_loader, (X_val, y_val), (X_test, y_test) = make_dataloaders_raw(split_idx, batch_size)
@@ -179,6 +198,7 @@ def train_model(
 
     history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
 
+    t0 = time.perf_counter()
     for epoch in range(epochs):
         train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, criterion)
         val_loss, val_preds = evaluate_tensors(model, X_val, y_val, criterion)
@@ -193,14 +213,16 @@ def train_model(
             print(f"    epoch {epoch + 1:>2}/{epochs}  "
                   f"train_loss={train_loss:.3f} train_acc={train_acc * 100:5.1f}%  "
                   f"val_loss={val_loss:.3f} val_acc={val_acc * 100:5.1f}%")
+    train_seconds = time.perf_counter() - t0
 
     _, val_preds = evaluate_tensors(model, X_val, y_val, criterion)
     _, test_preds = evaluate_tensors(model, X_test, y_test, criterion)
 
-    val_metrics = compute_metrics(y_val.cpu().numpy(), val_preds)
-    test_metrics = compute_metrics(y_test.cpu().numpy(), test_preds)
+    y_val_np, y_test_np = y_val.cpu().numpy(), y_test.cpu().numpy()
+    val_metrics = compute_metrics(y_val_np, val_preds)
+    test_metrics = compute_metrics(y_test_np, test_preds)
 
-    return model, history, val_metrics, test_metrics, y_test.cpu().numpy(), test_preds
+    return model, history, val_metrics, test_metrics, y_val_np, val_preds, y_test_np, test_preds, train_seconds
 
 
 # ---------------------------------------------------------------------------
@@ -210,7 +232,7 @@ def score_config_across_splits(
     cfg: CNNConfig,
     training_cfg: dict,
     n_splits: int = N_SPLITS,
-) -> tuple[float, float, float]:
+) -> tuple[float, float, float, dict]:
     """
     Vyhodnotí jednu konfiguráciu na VŠETKÝCH splitoch a vráti
     (priemerná val accuracy, jej smerodajná odchýlka, priemerná val precision+recall).
@@ -222,14 +244,20 @@ def score_config_across_splits(
     a zároveň umožňuje preferovať konfigurácie s malým rozptylom.
 
     Testovacie dáta sa pri výbere NEPOUŽÍVAJÚ - zostávajú nedotknuté.
+
+    Popri tom vracia aj history zo split_00 (reprezentatívny beh, bez ďalšieho
+    trénovania navyše) - použije sa na porovnávací graf priebehu trénovania.
     """
     val_accs, val_pr = [], []
+    history_split0 = None
     for split_idx in range(n_splits):
-        _, _, val_metrics, _, _, _ = train_model(cfg, split_idx, **training_cfg)
+        _, history, val_metrics, *_ = train_model(cfg, split_idx, **training_cfg)
         val_accs.append(val_metrics["accuracy"])
         val_pr.append(val_metrics["precision"] + val_metrics["recall"])
+        if split_idx == 0:
+            history_split0 = history
 
-    return float(np.mean(val_accs)), float(np.std(val_accs)), float(np.mean(val_pr))
+    return float(np.mean(val_accs)), float(np.std(val_accs)), float(np.mean(val_pr)), history_split0
 
 
 def compare_training_hyperparameters(cfg: CNNConfig, n_splits: int = N_SPLITS) -> dict:
@@ -254,11 +282,13 @@ def compare_training_hyperparameters(cfg: CNNConfig, n_splits: int = N_SPLITS) -
     print(f"  {'konfigurácia':<52} {'VAL acc (priemer +- std)'}")
 
     best = None
+    histories = {}
     for train_cfg in configs:
-        mean_acc, std_acc, mean_pr = score_config_across_splits(cfg, train_cfg, n_splits)
+        mean_acc, std_acc, mean_pr, history = score_config_across_splits(cfg, train_cfg, n_splits)
 
         cfg_str = ", ".join(f"{k}={v}" for k, v in train_cfg.items())
         print(f"  {cfg_str:<52} {mean_acc * 100:6.2f} % +- {std_acc * 100:5.2f} %")
+        histories[cfg_str] = history
 
         score = (mean_acc, mean_pr)
         if best is None or score > best["score"]:
@@ -266,6 +296,14 @@ def compare_training_hyperparameters(cfg: CNNConfig, n_splits: int = N_SPLITS) -
 
     cfg_str = ", ".join(f"{k}={v}" for k, v in best["config"].items())
     print(f"\nNajlepšie parametre trénovania: {cfg_str}")
+
+    plot_training_curves_comparison(
+        histories,
+        title=f"CNN ({cfg.name}) - porovnanie parametrov trénovania (split_00)",
+        filename="hyperparam_training_curves.png",
+        out_dir=RESULTS_CNN_DIR,
+    )
+
     return best["config"]
 
 
@@ -289,55 +327,120 @@ def compare_architectures(training_cfg: dict, n_splits: int = N_SPLITS) -> CNNCo
     print(f"  {'architektúra':<34} {'VAL acc (priemer +- std)'}")
 
     best = None
+    histories = {}
     for arch in architectures:
-        mean_acc, std_acc, mean_pr = score_config_across_splits(arch, training_cfg, n_splits)
+        mean_acc, std_acc, mean_pr, history = score_config_across_splits(arch, training_cfg, n_splits)
 
         print(f"  {arch.name:<34} {mean_acc * 100:6.2f} % +- {std_acc * 100:5.2f} %")
+        histories[arch.name] = history
 
         score = (mean_acc, mean_pr)
         if best is None or score > best["score"]:
             best = {"arch": arch, "score": score}
 
     print(f"\nNajlepšia architektúra: {best['arch'].name}")
+
+    plot_training_curves_comparison(
+        histories,
+        title="CNN - porovnanie architektúr (split_00)",
+        filename="architecture_training_curves.png",
+        out_dir=RESULTS_CNN_DIR,
+    )
+
     return best["arch"]
 
 
 def run_multiple_splits(cfg: CNNConfig, training_cfg: dict, n_splits: int = N_SPLITS):
-    val_runs, test_runs = [], []
-    last_y_test, last_y_pred = None, None
+    """
+    Zadanie bod 6: najlepšiu štruktúru spustiť 5x a spočítať min/max/priemer metrík.
+
+    Navyše pre KAŽDÝ z 5 behov uloží: surové predikcie + históriu trénovania
+    (results/cnn/runs/), graf priebehu daného behu a jeho kontingenčnú maticu.
+    Po skončení vytvorí súčtové kontingenčné matice (5 behov spolu) a maticu
+    najlepšieho behu.
+    """
+    val_runs, test_runs, train_seconds = [], [], []
+    histories = {}
+    y_vals, y_val_preds, y_tests, y_test_preds = [], [], [], []
 
     print(f"\n{'=' * 70}")
     print(f"Spustenie {cfg.name} na {n_splits} rozdeleniach (parametre: {training_cfg})")
     print(f"{'=' * 70}")
 
     for split_idx in range(n_splits):
-        _, _, val_metrics, test_metrics, y_test, y_test_pred = train_model(cfg, split_idx, **training_cfg)
+        _, history, val_metrics, test_metrics, y_val, val_pred, y_test, test_pred, secs = \
+            train_model(cfg, split_idx, **training_cfg)
 
         val_runs.append(val_metrics)
         test_runs.append(test_metrics)
-        last_y_test, last_y_pred = y_test, y_test_pred
+        train_seconds.append(secs)
+        histories[f"split_{split_idx:02d}"] = history
+        y_vals.append(y_val); y_val_preds.append(val_pred)
+        y_tests.append(y_test); y_test_preds.append(test_pred)
+
+        save_run_artifacts(
+            RESULTS_CNN_DIR, split_idx, val_metrics, test_metrics,
+            y_val, val_pred, y_test, test_pred, secs, history=history,
+        )
+        plot_single_run_training_curve(
+            history,
+            title=f"CNN ({cfg.name}) - priebeh trénovania (split_{split_idx:02d})",
+            filename=f"runs/split_{split_idx:02d}_training_curve.png",
+            out_dir=RESULTS_CNN_DIR,
+        )
+        plot_confusion_matrix_pair(
+            y_test, test_pred,
+            title=f"CNN ({cfg.name}) - kontingenčná matica (split_{split_idx:02d}, testovacie dáta)",
+            out_dir=RESULTS_CNN_DIR,
+            filename=f"runs/split_{split_idx:02d}_confusion.png",
+            n_okien_info=f"beh split_{split_idx:02d}, {len(y_test)} okien, čas trénovania {secs:.2f} s",
+        )
 
         print(f"  split_{split_idx:02d}:  VAL  {format_metrics(val_metrics)}   |   "
-              f"TEST  {format_metrics(test_metrics)}")
+              f"TEST  {format_metrics(test_metrics)}   |   čas={secs:.2f} s")
 
-    print_summary(f"CNN - validačné dáta (z {len(val_runs)} behov)", summarize_runs(val_runs))
-    print_summary(f"CNN - testovacie dáta (z {len(test_runs)} behov)", summarize_runs(test_runs))
+    write_runs_csv(RESULTS_CNN_DIR, val_runs, test_runs, train_seconds)
 
-    return last_y_test, last_y_pred
+    val_summary = summarize_runs(val_runs)
+    test_summary = summarize_runs(test_runs)
+    print_summary(f"CNN - validačné dáta (z {len(val_runs)} behov)", val_summary)
+    print_summary(f"CNN - testovacie dáta (z {len(test_runs)} behov)", test_summary)
+
+    plot_training_curves_comparison(
+        histories,
+        title=f"CNN ({cfg.name}) - priebeh trénovania naprieč {n_splits} behmi (splitmi)",
+        filename="final_splits_training_curves.png",
+        out_dir=RESULTS_CNN_DIR,
+    )
+    plot_runs_bar_chart(
+        list(histories.keys()),
+        [run["accuracy"] for run in val_runs],
+        [run["accuracy"] for run in test_runs],
+        title=f"CNN ({cfg.name}) - úspešnosť naprieč {n_splits} behmi (splitmi)",
+        ylabel="Accuracy [%]",
+        filename="final_splits_accuracy.png",
+        out_dir=RESULTS_CNN_DIR,
+        val_summary=val_summary,
+        test_summary=test_summary,
+    )
+
+    generate_post_run_confusion_matrices(
+        "CNN", RESULTS_CNN_DIR, y_vals, y_val_preds, y_tests, y_test_preds, test_runs,
+        best_filename="cnn_confusion_matrix.png",
+        combined_test_filename="cnn_confusion_matrix_combined.png",
+        combined_val_filename="cnn_confusion_matrix_combined_val.png",
+    )
 
 
 if __name__ == "__main__":
-    print(f"Device: {DEVICE}\n")
+    with capture_console_to_markdown(
+        "cnn_training_log.md", RESULTS_CNN_DIR, title="CNN - priebeh trénovania a vyhodnotenia"
+    ):
+        print(f"Device: {DEVICE}\n")
 
-    first_structure = CNNConfig(conv_channels=(16, 32), kernel_sizes=(9, 5), fc_dim=64, dropout=0.3)
-    best_training_cfg = compare_training_hyperparameters(first_structure)
+        first_structure = CNNConfig(conv_channels=(16, 32), kernel_sizes=(9, 5), fc_dim=64, dropout=0.3)
+        best_training_cfg = compare_training_hyperparameters(first_structure)
 
-    best_arch = compare_architectures(best_training_cfg)
+        best_arch = compare_architectures(best_training_cfg)
 
-    y_test, y_test_pred = run_multiple_splits(best_arch, best_training_cfg)
-
-    plot_confusion_matrix(
-        y_test, y_test_pred,
-        title=f"CNN ({best_arch.name}) - kontingenčná matica (testovacie dáta)",
-        filename="cnn_confusion_matrix.png",
-    )
+        run_multiple_splits(best_arch, best_training_cfg)
