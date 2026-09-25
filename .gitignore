@@ -1,0 +1,20 @@
+data
+images.zip
+venv
+data_split
+
+# Trained model checkpoints - large (~90MB each) and reproducible via train_*.py,
+# kept out of git. All metrics/plots/logs needed for the docs live in Results/ too.
+*.pt
+
+# Python
+__pycache__/
+*.py[cod]
+__init__.py
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# LaTeX build artifacts (Projekt1.pdf itself is kept as the deliverable)
+Latex/.build/

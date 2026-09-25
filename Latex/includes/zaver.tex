@@ -1,0 +1,28 @@
+Model M1 (ResNet50, transferové učenie) dosiahol v základnej konfigurácii
+(zamrznutý backbone, augmentácia trénovacích dát) testovaciu accuracy
+\textbf{86,13~\%} na 15-triednej klasifikácii jedál, so štatisticky
+stabilnými výsledkami naprieč tromi nezávislými behmi (smerodajná odchýlka
+0,16~p.\,b.).
+
+Oba povinné doplnkové experimenty potvrdili očakávaný smer efektu:
+augmentácia trénovacích dát zvýšila testovaciu accuracy o 1,8 percentuálneho
+bodu (86,13~\% $\to$ 84,31~\% bez nej), postupné rozmrazovanie vrstiev
+backbonu prinieslo výrazne väčší nárast -- 6,5 percentuálneho bodu (86,13~\%
+$\to$ \textbf{92,60~\%}). Rozmrazovanie vrstiev sa tak ukázalo ako
+podstatne účinnejší spôsob zlepšenia tejto úlohy než dátová augmentácia,
+keďže umožňuje doladiť aj vysokoúrovňové konvolučné príznaky backbonu na
+konkrétnu doménu jedál, namiesto spoliehania sa výlučne na všeobecné,
+ImageNet naučené reprezentácie.
+
+GradCAM vizualizácia potvrdila, že model sa pri správnych predikciách
+sústreďuje na samotné jedlo, zatiaľ čo pri chybách často reaguje na
+vizuálne zameniteľné alebo okrajové prvky obrazu, čo koreluje so zámenami
+pozorovanými v kontingenčnej tabuľke (napr. \emph{steak}/\emph{beef\_tartare},
+\emph{pancakes}/\emph{waffles}).
+
+Ďalšie kroky projektu (nad rámec tejto dokumentácie) zahŕňajú natrénovanie
+a porovnanie modelov M2 (ResNet50 + CBAM), M3 (ConvNeXt), M4 (vizuálny
+transformer) a M5 (hybridný model CoAtNet) pri rovnakých parametroch
+trénovania, aby bolo možné vyhodnotiť vplyv architektúry (attention vrstva,
+optimalizovaná CNN, transformer, hybridný prístup) na úspešnosť a stabilitu
+klasifikácie pri rovnakej úlohe.

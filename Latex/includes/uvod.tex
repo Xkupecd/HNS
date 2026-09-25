@@ -1,0 +1,28 @@
+Cieľom projektu je porovnať trénovanie vybraných architektúr konvolučných
+neurónových sietí, vizuálnych transformerov a hybridných modelov pri riešení
+úlohy klasifikácie obrazu pomocou transferového učenia (transfer learning).
+Táto dokumentácia pokrýva prvú fázu projektu -- model \textbf{M1} (CNN
+ResNet50 s transferovým učením) a dva povinné doplnkové experimenty, ktoré
+zadanie vyžaduje aspoň pre jeden model:
+
+\begin{itemize}
+    \item vplyv augmentácie trénovacích dát na úspešnosť klasifikácie,
+    \item vplyv postupného rozmrazovania vrstiev (\emph{gradual unfreezing})
+          predtrénovanej siete oproti trénovaniu iba novej výstupnej vrstvy.
+\end{itemize}
+
+Ako dataset bol použitý výber z databázy \textbf{Food-101} -- klasifikácia
+obrazov jedál. Z pôvodných 101 tried bolo vybraných 15 najviac vizuálne
+odlíšiteľných tried (napr. dumplings, lasagna, pizza, steak, waffles), každá
+s 1000 obrázkami, spolu 15\,000 obrázkov. Dataset bol náhodne rozdelený v
+pomere 80/10/10 na trénovaciu, validačnú a testovaciu množinu (12\,000/1\,500/
+1\,500 obrázkov), pri zachovaní rovnakého zastúpenia tried vo všetkých troch
+množinách.
+
+Pre model M1 boli spustené tri nezávislé trénovania (rovnako ako pri
+doplnkových experimentoch) a výsledky boli štatisticky vyhodnotené
+(priemer a smerodajná odchýlka). Pre najlepší beh je zobrazený priebeh
+trénovania (Loss a Accuracy na trénovacích a validačných dátach), na
+testovacích dátach bola vyčíslená presnosť (Accuracy), presnosť (Precision)
+a senzitivita (Recall), spolu s kontingenčnou tabuľkou. Pre vybrané testovacie
+vzorky bola vykonaná vizualizácia rozhodovania siete metódou GradCAM.
