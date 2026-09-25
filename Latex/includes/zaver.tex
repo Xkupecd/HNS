@@ -1,28 +1,41 @@
-Model M1 (ResNet50, transferové učenie) dosiahol v základnej konfigurácii
-(zamrznutý backbone, augmentácia trénovacích dát) testovaciu accuracy
-\textbf{86,13~\%} na 15-triednej klasifikácii jedál, so štatisticky
-stabilnými výsledkami naprieč tromi nezávislými behmi (smerodajná odchýlka
-0,16~p.\,b.).
+V prvej fáze projektu boli natrénované a vyhodnotené modely M1 (ResNet50)
+a M2 (ResNet50 + CBAM) na 15-triednej klasifikácii jedál, každý v troch
+konfiguráciách a s troma nezávislými behmi.
 
-Oba povinné doplnkové experimenty potvrdili očakávaný smer efektu:
-augmentácia trénovacích dát zvýšila testovaciu accuracy o 1,8 percentuálneho
-bodu (86,13~\% $\to$ 84,31~\% bez nej), postupné rozmrazovanie vrstiev
-backbonu prinieslo výrazne väčší nárast -- 6,5 percentuálneho bodu (86,13~\%
-$\to$ \textbf{92,60~\%}). Rozmrazovanie vrstiev sa tak ukázalo ako
-podstatne účinnejší spôsob zlepšenia tejto úlohy než dátová augmentácia,
-keďže umožňuje doladiť aj vysokoúrovňové konvolučné príznaky backbonu na
-konkrétnu doménu jedál, namiesto spoliehania sa výlučne na všeobecné,
-ImageNet naučené reprezentácie.
+V základnej konfigurácii (zamrznutý backbone, augmentácia) dosiahol M1
+testovaciu accuracy \textbf{86,13~\%} a M2 \textbf{89,07~\%}. Tento rozdiel
+je štatisticky významný (Welchov t-test, $p = 0{,}020$). Attention vrstva
+CBAM umožnila modelu prispôsobiť zamrznuté ImageNet príznaky doméne jedál
+a zlepšila najmä triedy, v ktorých M1 zlyhával (pizza, beef\_tartare,
+pancakes). Je to však aj za cenu 24-krát viac trénovateľných parametrov,
+približne dvojnásobného času trénovania a väčšieho rozptylu medzi behmi.
 
-GradCAM vizualizácia potvrdila, že model sa pri správnych predikciách
-sústreďuje na samotné jedlo, zatiaľ čo pri chybách často reaguje na
-vizuálne zameniteľné alebo okrajové prvky obrazu, čo koreluje so zámenami
-pozorovanými v kontingenčnej tabuľke (napr. \emph{steak}/\emph{beef\_tartare},
-\emph{pancakes}/\emph{waffles}).
+Oba doplnkové experimenty potvrdili očakávaný smer vplyvu pri oboch
+modeloch:
 
-Ďalšie kroky projektu (nad rámec tejto dokumentácie) zahŕňajú natrénovanie
-a porovnanie modelov M2 (ResNet50 + CBAM), M3 (ConvNeXt), M4 (vizuálny
-transformer) a M5 (hybridný model CoAtNet) pri rovnakých parametroch
-trénovania, aby bolo možné vyhodnotiť vplyv architektúry (attention vrstva,
-optimalizovaná CNN, transformer, hybridný prístup) na úspešnosť a stabilitu
-klasifikácie pri rovnakej úlohe.
+\begin{itemize}
+    \item \textbf{augmentácia} zvýšila accuracy o 1,8~p.\,b. (M1) a
+          3,5~p.\,b. (M2) -- model s väčšou kapacitou z nej profituje viac,
+    \item \textbf{postupné rozmrazovanie vrstiev} zvýšilo accuracy
+          o 6,5~p.\,b. (M1) a 2,8~p.\,b. (M2) a bolo najúčinnejším
+          opatrením v celom projekte.
+\end{itemize}
+
+Po postupnom rozmrazení backbonu sa výhoda CBAM stráca: M1 dosiahol
+\textbf{92,60~\%} a M2 91,91~\% a rozdiel nie je významný ($p = 0{,}37$).
+Najlepším modelom tejto fázy je preto \textbf{M1 s postupným
+rozmrazovaním} -- je najpresnejší, najstabilnejší (std 0,19~p.\,b.)
+a trénuje sa výrazne rýchlejšie ako M2. Záver pre praktické použitie je, že
+attention mechanizmus CBAM má zmysel hlavne vtedy, keď sa backbone nedá
+alebo nechce doladiť (napr. pre obmedzené výpočtové prostriedky). Pri plnom
+doladení siete je jednoduchší model rovnako dobrý.
+
+GradCAM vizualizácia pri oboch modeloch ukázala, že sa sieť pri správnych
+predikciách sústreďuje na charakteristické časti jedla. Chyby vznikajú
+najmä pri obrázkoch, ktoré naozaj obsahujú prvky inej triedy (hranolky na
+hot dogu, poleva na šiškách) alebo pri vizuálne príbuzných jedlách
+(lasagna a pizza).
+
+Ďalšie kroky projektu zahŕňajú natrénovanie modelov M3 (ConvNeXt),
+M4 (vizuálny transformer) a M5 (hybridný model CoAtNet) pri rovnakých
+parametroch trénovania a ich porovnanie s M1 a M2.

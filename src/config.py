@@ -5,6 +5,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"          # raw class-per-folder images (git-ignored)
 SPLIT_DIR = PROJECT_ROOT / "data_split"   # train/val/test symlink or csv split
 RESULTS_DIR = PROJECT_ROOT / "Results"
+# One folder per model type, holding all of its configurations (baseline + ablations).
+M1_RESULTS_DIR = RESULTS_DIR / "M1_CNN"
+M2_RESULTS_DIR = RESULTS_DIR / "M2_CNN_CBAM"
+COMPARISON_DIR = RESULTS_DIR / "M1_vs_M2"
 
 CLASSES = sorted(p.name for p in DATA_DIR.iterdir() if p.is_dir()) if DATA_DIR.exists() else []
 

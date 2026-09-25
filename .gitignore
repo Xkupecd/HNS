@@ -1,20 +1,61 @@
-data
-images.zip
-venv
-data_split
+# --- Dataset (large, downloaded separately) ---
+/data/
+/data_split/
+/images.zip
+*.zip
+*.tar
+*.tar.gz
 
-# Trained model checkpoints - large (~90MB each) and reproducible via train_*.py,
-# kept out of git. All metrics/plots/logs needed for the docs live in Results/ too.
+# --- Virtual environments ---
+/venv/
+.venv/
+env/
+
+# --- Trained model checkpoints ---
+# ~90MB each and reproducible via train_*.py; all metrics/plots/logs
+# needed for the docs are kept in Results/.
 *.pt
+*.pth
+*.ckpt
+*.onnx
 
-# Python
+# --- Python ---
 __pycache__/
 *.py[cod]
-__init__.py
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
 .ipynb_checkpoints/
 
-# LaTeX build artifacts (Projekt1.pdf itself is kept as the deliverable)
+# --- LaTeX build artifacts (Projekt1.pdf is kept as the deliverable) ---
 Latex/.build/
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+Latex/*.log
+
+# --- Logs from ad-hoc background runs ---
+nohup.out
+
+# --- Secrets ---
+.env
+.env.*
+
+# --- Editors / OS / tools ---
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+.claude/

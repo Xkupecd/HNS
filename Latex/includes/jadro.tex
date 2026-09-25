@@ -22,7 +22,7 @@ všetkých troch množinách):
     \centering
     \caption{Veľkosť jednotlivých množín}
     \label{tab:data}
-    \begin{tabular}{lccc}
+    \begin{tabular}{lcc}
         \toprule
         Množina & Obrázkov spolu & Obrázkov na triedu \\
         \midrule
@@ -34,41 +34,35 @@ všetkých troch množinách):
 \end{table}
 
 Rozdelenie je uložené v \texttt{data\_split/manifest.csv} s pevne daným
-náhodným semienkom, takže je reprodukovateľné a testovacie dáta neboli pri
-žiadnom trénovaní ani ladení modelu použité.
+náhodným semienkom, takže je reprodukovateľné. Všetky modely a konfigurácie
+používajú to isté rozdelenie a testovacie dáta neboli pri trénovaní ani pri
+výbere najlepšej epochy použité (najlepší checkpoint sa vyberá podľa
+validačnej accuracy).
 
 \subsection{Predspracovanie a augmentácia}
 
 Všetky obrázky sú pred vstupom do siete zmenšené a orezané na $224\times224$
-px a normalizované strednou hodnotou a smerodajnou odchýlkou ImageNet
-datasetu (keďže backbone je naň predtrénovaný). Pre validačnú a testovaciu
+px a normalizované strednou hodnotou a smerodajnou odchýlkou datasetu
+ImageNet (keďže backbone je naň predtrénovaný). Pre validačnú a testovaciu
 množinu sa používa iba táto deterministická transformácia.
 
-Pre trénovaciu množinu je k dispozícii augmentovaná verzia (\texttt{RandomResizedCrop},
-horizontálne preklopenie, náhodná rotácia $\pm15^\circ$, farebný jitter,
-náhodný autokontrast a \texttt{RandomErasing}), ktorá sa použije pri
-základnom modeli M1 a je vypnutá pri ablácii bez augmentácie (kapitola~\ref{sec:augmentacia}).
-
-\section{Model M1 -- CNN ResNet50}
-\label{sec:m1}
-
-Ako architektúra CNN bol zvolený \textbf{ResNet50}, predtrénovaný na
-ImageNet (váhy \texttt{IMAGENET1K\_V2}). Výstupná plne prepojená vrstva bola
-nahradená novou lineárnou vrstvou s 15 výstupmi (podľa počtu tried). V
-základnej konfigurácii je celý backbone \textbf{zamrznutý} (trénuje sa iba
-nová výstupná vrstva) -- ide o tzv. \emph{linear probing}, referenčnú
-konfiguráciu, voči ktorej sa v kapitole~\ref{sec:unfreeze} porovnáva postupné
-rozmrazovanie vrstiev.
+Pre trénovaciu množinu je k dispozícii augmentovaná verzia
+(\texttt{RandomResizedCrop} so škálou 0,7--1,0, horizontálne preklopenie,
+náhodná rotácia $\pm15^\circ$, farebný jitter, náhodný autokontrast
+a \texttt{RandomErasing}), ktorá sa používa v základnej konfigurácii oboch
+modelov a je vypnutá pri experimente bez augmentácie
+(kapitola~\ref{sec:augmentacia}).
 
 \subsection{Parametre trénovania}
+\label{sec:params}
 
-Rovnaké parametre trénovania sa používajú vo všetkých troch M1 konfiguráciách
-(základná, bez augmentácie, postupné rozmrazovanie), aby boli výsledky priamo
-porovnateľné:
+Podľa zadania sa pri všetkých modeloch aj konfiguráciách používajú rovnaké
+parametre trénovania, takže rozdiely vo výsledkoch možno pripísať
+architektúre, resp. skúmanému faktoru:
 
 \begin{table}[H]
     \centering
-    \caption{Parametre trénovania M1}
+    \caption{Parametre trénovania (spoločné pre M1 aj M2)}
     \label{tab:params}
     \begin{tabular}{ll}
         \toprule
@@ -81,22 +75,45 @@ porovnateľné:
         Počet epoch & 30 \\
         Strata & CrossEntropyLoss \\
         Presnosť výpočtu & zmiešaná (AMP, float16) \\
-        Počet nezávislých behov & 3 \\
+        Výber checkpointu & epocha s najvyššou validačnou accuracy \\
+        Počet nezávislých behov & 3 (semienka 43, 44, 45) \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-Každá konfigurácia bola spustená \textbf{3-krát} s odlišným náhodným
-semienkom (inicializácia váh novej vrstvy, poradie dávok), aby bolo možné
-štatisticky vyhodnotiť priemer a rozptyl výsledkov.
+AdamW s learning rate $3 \times 10^{-4}$ je bežná a robustná voľba pre
+transferové učenie -- dostatočne malý, aby pri rozmrazení vrstiev
+nepoškodil predtrénované váhy, a zároveň dostatočne veľký, aby sa nová
+výstupná vrstva naučila za 30 epoch. Veľkosť dávky 128 bola zvolená ako
+maximum, ktoré sa pri postupnom rozmrazovaní M2 (najnáročnejšia
+konfigurácia, $\sim$5,8~GiB) zmestí do pamäte použitej GPU (8~GiB).
+
+Metriky Precision, Recall a F1 sú počítané ako \emph{makro} priemer cez
+triedy. Keďže testovacia množina má pre každú triedu presne 100 obrázkov,
+makro Recall je číselne zhodný s Accuracy. Smerodajná odchýlka je všade
+počítaná z troch behov (populačná, $\sigma$).
+
+\section{Model M1 -- CNN ResNet50}
+\label{sec:m1}
+
+Ako architektúra CNN bol zvolený \textbf{ResNet50}, predtrénovaný na
+ImageNet (váhy \texttt{IMAGENET1K\_V2}) -- osvedčená architektúra s
+reziduálnymi spojeniami, ktorá je dostatočne výkonná, a pritom sa (na
+rozdiel od väčších modelov) dá pri dávke 128 trénovať na bežnej GPU.
+Výstupná plne prepojená vrstva bola nahradená novou lineárnou vrstvou
+s 15 výstupmi. V základnej konfigurácii je celý backbone \textbf{zamrznutý}
+-- trénuje sa iba nová výstupná vrstva (30\,735 parametrov z 23,5 milióna).
+Táto konfigurácia je referenčná pre porovnanie s modelom M2
+aj s postupným rozmrazovaním.
 
 \subsection{Priebeh trénovania a výsledky na testovacích dátach}
 
-Obr.~\ref{fig:m1-curves} zobrazuje priebeh trénovania (Loss a Accuracy na
-trénovacích a validačných dátach) najlepšieho z troch behov. Krivky rastú
-plynulo bez známok preučenia -- keďže sa trénuje iba výstupná lineárna
-vrstva nad zamrznutým, bohato predtrénovaným backbonom, model má relatívne
-malú kapacitu vzhľadom na veľkosť trénovacej množiny.
+Obr.~\ref{fig:m1-curves} zobrazuje priebeh trénovania najlepšieho z troch
+behov. Krivky rastú plynulo a trénovacia a validačná krivka sa takmer
+prekrývajú -- model sa nepreučuje. Keďže sa trénuje iba lineárna vrstva nad
+zamrznutými príznakmi, model má vzhľadom na 12\,000 trénovacích obrázkov
+malú kapacitu a jeho úspešnosť je obmedzená skôr kvalitou (všeobecných,
+ImageNet) príznakov než množstvom dát.
 
 \obrazok[0.9\textwidth]{img/m1_curves.png}{M1 -- priebeh trénovania
 najlepšieho behu (Loss a Accuracy)}{fig:m1-curves}
@@ -117,182 +134,393 @@ najlepšieho behu (Loss a Accuracy)}{fig:m1-curves}
     \end{tabular}
 \end{table}
 
-Nízka smerodajná odchýlka (rádovo desatiny percenta) naprieč tromi behmi
-ukazuje, že výsledok je stabilný a nezávisí výrazne od náhodnej inicializácie
--- očakávané pri lineárnom probingu nad zamrznutým, deterministicky
-predtrénovaným backbonom.
+Nízka smerodajná odchýlka (0,16~p.\,b.) ukazuje, že výsledok takmer
+nezávisí od náhodnej inicializácie -- pri zamrznutom backbone sa medzi
+behmi líši iba inicializácia jednej lineárnej vrstvy a poradie dávok.
 
 \obrazok[0.85\textwidth]{img/m1_confusion.png}{M1 -- kontingenčná tabuľka
 najlepšieho behu (testovacie dáta)}{fig:m1-confusion}
 
-Z kontingenčnej tabuľky (Obr.~\ref{fig:m1-confusion}) je vidieť, že najviac
-zámen vzniká medzi vizuálne podobnými jedlami -- napr. \emph{steak} a
-\emph{beef\_tartare} (oba obsahujú surové/tmavé mäso), alebo \emph{pancakes}
-a \emph{waffles} (podobná farba a textúra povrchu). Naopak triedy s
-výrazným, jedinečným vzhľadom (\emph{greek\_salad}, \emph{lobster\_bisque})
-sú klasifikované takmer bezchybne.
+Súčtom kontingenčných tabuliek všetkých troch behov (300 testovacích
+obrázkov na triedu) vychádzajú ako najčastejšie zámeny \emph{lasagna}
+$\rightarrow$ \emph{pizza} (19-krát), \emph{chicken\_wings} $\rightarrow$
+\emph{steak} (17), \emph{beef\_tartare} $\rightarrow$ \emph{steak} (16)
+a \emph{pizza} $\rightarrow$ \emph{lasagna} (15). Ide o vizuálne príbuzné
+jedlá -- zapečený syr a paradajková omáčka, resp. hnedé opečené mäso.
+Najhoršie rozpoznávané triedy sú \emph{pancakes} (recall 80,3~\%),
+\emph{pizza} (80,7~\%) a \emph{beef\_tartare} (82,3~\%), najlepšie
+\emph{dumplings} (91,7~\%), \emph{greek\_salad} (91,0~\%)
+a \emph{lobster\_bisque} (89,7~\%).
 
 \subsection{Vizualizácia rozhodovania -- GradCAM}
 
-Pre vybrané testovacie vzorky (správne aj nesprávne klasifikované) bola
-vykonaná vizualizácia rozhodovania siete metódou \textbf{GradCAM}, aplikovanou
-na posledný konvolučný blok backbonu (\texttt{layer4}). Mapa zvýrazňuje
-oblasti obrazu, ktoré najviac prispeli k predikovanej triede.
+Pre náhodne vybrané testovacie vzorky (4 správne a 4 nesprávne
+klasifikované) bola vykonaná vizualizácia rozhodovania siete metódou
+\textbf{GradCAM}, aplikovanou na výstup posledného konvolučného bloku
+(\texttt{layer4}). Mapa zvýrazňuje oblasti obrazu, ktoré najviac prispeli
+k predikovanej triede.
 
 \obrazok[\textwidth]{img/m1_gradcam.png}{M1 -- GradCAM vizualizácia na
 správne (hore) a nesprávne (dole) klasifikovaných testovacích
 vzorkách}{fig:m1-gradcam}
 
-Pri správne klasifikovaných vzorkách sa aktivácia sústreďuje priamo na
-jedlo (typický tvar, textúra povrchu), pri nesprávne klasifikovaných
-vzorkách sieť často reaguje na okrajové alebo pozadové prvky (tanier,
-príloha, osvetlenie), prípadne sa sústreďuje na časť obrazu, ktorá je
-vizuálne zameniteľná s inou triedou -- čo zodpovedá zámenám pozorovaným v
-kontingenčnej tabuľke.
+Pri správne klasifikovaných vzorkách sa aktivácia sústreďuje na samotné
+jedlo a jeho typickú textúru. Pri chybách sieť často reaguje na časť obrazu,
+ktorá je vizuálne zameniteľná s inou triedou, alebo na okolie (tanier,
+prílohu), čo zodpovedá zámenám v kontingenčnej tabuľke.
+
+\section{Model M2 -- ResNet50 + CBAM}
+\label{sec:m2}
+
+\subsection{Architektúra}
+
+Model M2 je podľa zadania model M1 doplnený o attention mechanizmus
+\textbf{CBAM} (Convolutional Block Attention Module, Woo a kol., 2018).
+CBAM postupne aplikuje dva typy pozornosti na mapu príznakov
+$F \in \mathbb{R}^{C \times H \times W}$:
+
+\begin{itemize}
+    \item \textbf{kanálová pozornosť} -- príznaky sa zredukujú priemerným
+          aj maximálnym poolingom cez priestorové rozmery, prejdú zdieľaným
+          MLP (redukcia $C \rightarrow C/16 \rightarrow C$) a súčet oboch
+          výstupov po sigmoide váhuje jednotlivé kanály -- sieť sa učí,
+          \emph{ktoré} príznaky sú dôležité,
+    \item \textbf{priestorová pozornosť} -- priemer a maximum cez kanály
+          sa spoja do dvojkanálovej mapy, konvolúcia $7\times7$ so sigmoidom
+          z nej vytvorí váhu pre každú pozíciu -- sieť sa učí, \emph{kde}
+          v obraze sú dôležité oblasti.
+\end{itemize}
+
+\noindent Blok CBAM je vložený za každý zo štyroch reziduálnych stupňov
+ResNet50 (\texttt{layer1}--\texttt{layer4}, 256, 512, 1024 a 2048 kanálov).
+Predtrénovaný backbone aj výstupná vrstva sú rovnaké ako pri M1.
+
+Pri zamrznutom backbone sa v M2 trénujú bloky CBAM aj výstupná vrstva --
+\textbf{731\,527 trénovateľných parametrov} oproti 30\,735 pri M1 (celkovo
+24,2 mil. oproti 23,5 mil.). Keďže CBAM je vložený \emph{do} backbonu, gradient
+musí prejsť spätne aj cez zamrznuté vrstvy \texttt{layer2}--\texttt{layer4}
+(ich váhy sa nemenia, ale treba vypočítať gradient vzhľadom na aktivácie).
+Preto je jedna epocha M2 približne dvakrát pomalšia než pri M1 a model
+potrebuje viac pamäte GPU.
+
+\subsection{Priebeh trénovania a výsledky na testovacích dátach}
+
+\obrazok[0.9\textwidth]{img/m2_curves.png}{M2 -- priebeh trénovania
+najlepšieho behu (Loss a Accuracy)}{fig:m2-curves}
+
+Na rozdiel od M1 začína M2 pomaly -- po prvej epoche má validačnú accuracy
+len $\sim$15--50~\%. Náhodne inicializované bloky CBAM totiž na začiatku
+náhodne preváhujú predtrénované príznaky, a model sa najskôr musí naučiť
+pozornosť, ktorá ich nepoškodzuje. Približne od 4. epochy sa M2 vyrovná M1
+a potom ho predbieha. Na rozdiel od M1 sa pri M2 postupne otvára rozdiel
+medzi trénovacou (93,6~\%) a validačnou (88,1~\%) accuracy -- väčší počet
+trénovateľných parametrov zvyšuje kapacitu, ale aj náchylnosť na preučenie.
+
+\begin{table}[H]
+    \centering
+    \caption{M2 -- testovacie metriky (priemer $\pm$ smerodajná odchýlka z 3 behov)}
+    \label{tab:m2-metrics}
+    \begin{tabular}{lc}
+        \toprule
+        Metrika & Hodnota \\
+        \midrule
+        Accuracy  & 89,07 $\pm$ 0,67~\% \\
+        Precision & 89,33 $\pm$ 0,64~\% \\
+        Recall    & 89,07 $\pm$ 0,67~\% \\
+        F1        & 89,09 $\pm$ 0,67~\% \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Jednotlivé behy dosiahli 88,73~\%, 90,00~\% a 88,47~\%. Rozptyl je približne
+štyrikrát väčší ako pri M1 -- s viac ako 700 tisíc náhodne
+inicializovanými parametrami CBAM závisí výsledok viac od inicializácie.
+
+\obrazok[0.85\textwidth]{img/m2_confusion.png}{M2 -- kontingenčná tabuľka
+najlepšieho behu (testovacie dáta)}{fig:m2-confusion}
+
+V súčte troch behov sú najčastejšie zámeny \emph{lasagna} $\rightarrow$
+\emph{pizza} (20-krát, rovnako ako pri M1), \emph{panna\_cotta}
+$\rightarrow$ \emph{lobster\_bisque} (17) a \emph{cup\_cakes}
+$\rightarrow$ \emph{donuts} (14). Zámeny mäsových jediel za \emph{steak},
+typické pre M1, sa výrazne zmenšili. Najhoršie rozpoznávaná trieda je
+\emph{steak} (85,0~\%), najlepšie \emph{greek\_salad} (95,7~\%)
+a \emph{dumplings} (94,7~\%).
+
+\subsection{Vizualizácia rozhodovania -- GradCAM}
+
+Pri M2 je GradCAM aplikovaný na výstup posledného bloku CBAM
+(\texttt{cbam4}), teda na príznaky \texttt{layer4} po zohľadnení pozornosti --
+práve tie vstupujú do klasifikátora.
+
+\obrazok[\textwidth]{img/m2_gradcam.png}{M2 -- GradCAM vizualizácia na
+správne (hore) a nesprávne (dole) klasifikovaných testovacích
+vzorkách}{fig:m2-gradcam}
+
+Pri správnych predikciách sa aktivácia sústreďuje na charakteristické
+časti jedla (mriežka wafle, poleva cupcaku). Chyby sú dobre
+interpretovateľné: pri hot dogu klasifikovanom ako \emph{french\_fries}
+sa model pozerá na hranolky položené na párku, pri šiškách
+klasifikovaných ako \emph{cup\_cakes} na zdobenú polevu, ktorá je typická
+pre obe triedy. Chyby teda vznikajú hlavne pri obrázkoch, ktoré naozaj
+obsahujú prvky inej triedy.
 
 \section{Vplyv augmentácie trénovacích dát}
 \label{sec:augmentacia}
 
 Podľa zadania (,,aspoň pre jeden model ukážte vplyv augmentácie na
-úspešnosť klasifikácie``) bola pri modeli M1 porovnaná trénovacia
-konfigurácia s augmentáciou (\texttt{M1\_cnn}) a bez augmentácie
-(\texttt{M1\_cnn\_no\_augmentation}) -- ostatné parametre trénovania (Tabuľka~\ref{tab:params})
-zostali nezmenené.
-
-\obrazok[0.9\textwidth]{img/compare_augmentation_metrics.png}{Vplyv
-augmentácie -- testovacie metriky (priemer 3 behov $\pm$ std)}{fig:aug-metrics}
+úspešnosť klasifikácie``) bola pre oba modely porovnaná základná
+konfigurácia s augmentáciou a konfigurácia bez augmentácie. Ostatné
+parametre trénovania (Tabuľka~\ref{tab:params}) zostali nezmenené.
 
 \begin{table}[H]
     \centering
-    \caption{Vplyv augmentácie -- testovacia accuracy (priemer $\pm$ std z 3 behov)}
+    \caption{Vplyv augmentácie -- testovacie metriky (priemer $\pm$ std z 3 behov)}
     \label{tab:aug-table}
-    \begin{tabular}{lcc}
+    \footnotesize
+    \begin{tabular}{lcccc}
         \toprule
-         & S augmentáciou & Bez augmentácie \\
+         & \multicolumn{2}{c}{M1} & \multicolumn{2}{c}{M2} \\
+        \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+         & s augm. & bez augm. & s augm. & bez augm. \\
         \midrule
-        Accuracy  & \textbf{86,13 $\pm$ 0,16~\%} & 84,31 $\pm$ 0,06~\% \\
-        Precision & \textbf{86,43 $\pm$ 0,15~\%} & 84,67 $\pm$ 0,08~\% \\
-        Recall    & \textbf{86,13 $\pm$ 0,16~\%} & 84,31 $\pm$ 0,06~\% \\
-        F1        & \textbf{86,19 $\pm$ 0,16~\%} & 84,38 $\pm$ 0,07~\% \\
+        Accuracy  & \textbf{86,13 $\pm$ 0,16} & 84,31 $\pm$ 0,06 & \textbf{89,07 $\pm$ 0,67} & 85,53 $\pm$ 0,52 \\
+        Precision & \textbf{86,43 $\pm$ 0,15} & 84,67 $\pm$ 0,08 & \textbf{89,33 $\pm$ 0,64} & 86,01 $\pm$ 0,51 \\
+        Recall    & \textbf{86,13 $\pm$ 0,16} & 84,31 $\pm$ 0,06 & \textbf{89,07 $\pm$ 0,67} & 85,53 $\pm$ 0,52 \\
+        F1        & \textbf{86,19 $\pm$ 0,16} & 84,38 $\pm$ 0,07 & \textbf{89,09 $\pm$ 0,67} & 85,57 $\pm$ 0,48 \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-Augmentácia trénovacích dát zvýšila testovaciu accuracy o približne
-\textbf{1,8 percentuálneho bodu} (86,13~\% oproti 84,31~\%), pričom rozdiel
-je oveľa väčší než smerodajné odchýlky oboch konfigurácií (0,16 a 0,06~p.\,b.)
--- ide teda o systematický, nie náhodný efekt.
+Augmentácia zlepšila testovaciu accuracy pri oboch modeloch -- pri M1
+o \textbf{1,8~p.\,b.}, pri M2 o \textbf{3,5~p.\,b.} V oboch prípadoch je rozdiel
+niekoľkonásobne väčší než smerodajná odchýlka, ide teda o systematický efekt.
 
-\obrazok[0.9\textwidth]{img/compare_augmentation_curves.png}{Vplyv
-augmentácie -- priebeh validačného Loss a Accuracy najlepšieho behu}{fig:aug-curves}
+\obrazok[0.75\textwidth]{img/m1_compare_augmentation_metrics.png}{M1 -- vplyv
+augmentácie na testovacie metriky}{fig:m1-aug-metrics}
 
-Zaujímavé je, že priebeh \emph{validačnej} accuracy a loss (Obr.~\ref{fig:aug-curves})
-je počas trénovania pri oboch konfiguráciách takmer identický -- rozdiel sa
-prejaví až na testovacích dátach. Vysvetlenie je konzistentné s tým, že sa
-trénuje iba malá výstupná vrstva nad zamrznutým backbonom: model sa v
-žiadnej z konfigurácií výrazne nepreučí ani za 30 epoch, augmentácia teda
-nefunguje ako klasická regularizácia proti preučeniu, ale robí naučenú
-reprezentáciu robustnejšou voči variáciám vstupu (uhol, mierka, osvetlenie,
-orezanie), ktoré sa objavujú v testovacej množine, ale validačná množina ich
-v danom behu nemusí dostatočne pokrývať.
+\obrazok[0.9\textwidth]{img/m1_compare_augmentation_curves.png}{M1 -- vplyv
+augmentácie na priebeh validačného Loss a Accuracy (najlepší beh)}{fig:m1-aug-curves}
+
+\obrazok[0.75\textwidth]{img/m2_compare_augmentation_metrics.png}{M2 -- vplyv
+augmentácie na testovacie metriky}{fig:m2-aug-metrics}
+
+\obrazok[0.9\textwidth]{img/m2_compare_augmentation_curves.png}{M2 -- vplyv
+augmentácie na priebeh validačného Loss a Accuracy (najlepší beh)}{fig:m2-aug-curves}
+
+Pri M1 sú validačné krivky s augmentáciou aj bez nej takmer totožné
+(Obr.~\ref{fig:m1-aug-curves}) a rozdiel sa prejaví až na testovacích dátach.
+M1 má iba 30 tisíc trénovateľných parametrov a nepreučuje sa ani bez
+augmentácie, preto augmentácia nepôsobí ako regularizácia proti preučeniu,
+ale robí naučený klasifikátor odolnejším voči variáciám vstupu (orezanie,
+uhol, osvetlenie).
+
+Pri M2 je efekt dvojnásobný. M2 má vďaka blokom CBAM oveľa väčšiu
+kapacitu a bez augmentácie sa rýchlejšie prispôsobí konkrétnym trénovacím
+obrázkom -- augmentácia tu teda plní aj úlohu klasickej regularizácie.
+Z toho vyplýva, že väčší model (alebo model s viac trénovateľnými
+parametrami) z augmentácie profituje viac.
+
+\obrazok[0.8\textwidth]{img/m1_noaug_confusion.png}{M1 bez augmentácie --
+kontingenčná tabuľka najlepšieho behu (testovacie dáta)}{fig:m1-noaug-confusion}
+
+\obrazok[0.8\textwidth]{img/m2_noaug_confusion.png}{M2 bez augmentácie --
+kontingenčná tabuľka najlepšieho behu (testovacie dáta)}{fig:m2-noaug-confusion}
 
 \section{Vplyv postupného rozmrazovania vrstiev}
 \label{sec:unfreeze}
 
 Podľa zadania (,,aspoň pre jeden model realizujte postupné rozmrazovanie
-vrstiev predtrénovanej siete``) bola pri modeli M1 porovnaná základná
-konfigurácia so \textbf{zamrznutým backbonom} (\texttt{M1\_cnn}) oproti
-konfigurácii s \textbf{postupným rozmrazovaním} (\texttt{M1\_cnn\_gradual\_unfreeze}).
+vrstiev predtrénovanej siete``) bola pre oba modely porovnaná základná
+konfigurácia so \textbf{zamrznutým backbonom} a konfigurácia
+s \textbf{postupným rozmrazovaním}.
 
-Rozmrazovanie prebieha v poradí \texttt{layer4 -> layer3 -> layer2 -> layer1}
-(od najvyššej, najviac úlohovo-špecifickej vrstvy k najnižšej, najviac
-všeobecnej), rovnomerne rozložené cez 30 epoch -- prvá vrstva (\texttt{layer4})
-sa rozmrazí po približne 6 epochách (po ,,zahriatí`` novej výstupnej vrstvy),
-posledná (\texttt{layer1}) tesne pred koncom trénovania. Novo rozmrazené
-parametre sa pridajú do optimalizátora s rovnakým learning rate ako
-zvyšok siete.
-
-\obrazok[0.9\textwidth]{img/compare_gradual_unfreeze_metrics.png}{Vplyv
-postupného rozmrazovania -- testovacie metriky (priemer 3 behov $\pm$
-std)}{fig:unfreeze-metrics}
+Rozmrazovanie prebieha v poradí \texttt{layer4} $\rightarrow$
+\texttt{layer3} $\rightarrow$ \texttt{layer2} $\rightarrow$ \texttt{layer1},
+teda od najvyšších, najviac úlohovo-špecifických vrstiev k najnižším,
+najvšeobecnejším (hrany, textúry). Prvých 6 epoch sa trénuje iba nová
+výstupná vrstva (a pri M2 bloky CBAM), aby náhodne inicializované vrstvy
+neposlali do backbonu veľké, nezmyselné gradienty. Potom sa každých
+6 epoch rozmrazí jeden stupeň: \texttt{layer4} v 7. epoche (+15,0 mil.
+parametrov), \texttt{layer3} v 13. (+7,1 mil.), \texttt{layer2} v 19.
+(+1,2 mil.) a \texttt{layer1} v 25. epoche (+0,2 mil.). Vstupná konvolúcia
+(\emph{stem}) zostáva zamrznutá. Novo rozmrazené parametre sa pridajú do
+optimalizátora s rovnakým learning rate.
 
 \begin{table}[H]
     \centering
-    \caption{Vplyv postupného rozmrazovania -- testovacia accuracy (priemer $\pm$ std z 3 behov)}
+    \caption{Vplyv postupného rozmrazovania -- testovacie metriky (priemer $\pm$ std z 3 behov)}
     \label{tab:unfreeze-table}
-    \begin{tabular}{lcc}
+    \footnotesize
+    \begin{tabular}{lcccc}
         \toprule
-         & Zamrznutý backbone & Postupné rozmrazovanie \\
+         & \multicolumn{2}{c}{M1} & \multicolumn{2}{c}{M2} \\
+        \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+         & zamrznutý & rozmrazovanie & zamrznutý & rozmrazovanie \\
         \midrule
-        Accuracy  & 86,13 $\pm$ 0,16~\% & \textbf{92,60 $\pm$ 0,19~\%} \\
-        Precision & 86,43 $\pm$ 0,15~\% & \textbf{92,75 $\pm$ 0,15~\%} \\
-        Recall    & 86,13 $\pm$ 0,16~\% & \textbf{92,60 $\pm$ 0,19~\%} \\
-        F1        & 86,19 $\pm$ 0,16~\% & \textbf{92,61 $\pm$ 0,17~\%} \\
+        Accuracy  & 86,13 $\pm$ 0,16 & \textbf{92,60 $\pm$ 0,19} & 89,07 $\pm$ 0,67 & \textbf{91,91 $\pm$ 0,85} \\
+        Precision & 86,43 $\pm$ 0,15 & \textbf{92,75 $\pm$ 0,15} & 89,33 $\pm$ 0,64 & \textbf{92,05 $\pm$ 0,79} \\
+        Recall    & 86,13 $\pm$ 0,16 & \textbf{92,60 $\pm$ 0,19} & 89,07 $\pm$ 0,67 & \textbf{91,91 $\pm$ 0,85} \\
+        F1        & 86,19 $\pm$ 0,16 & \textbf{92,61 $\pm$ 0,17} & 89,09 $\pm$ 0,67 & \textbf{91,93 $\pm$ 0,84} \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-Postupné rozmrazovanie zvýšilo testovaciu accuracy o \textbf{6,5
-percentuálneho bodu} (92,60~\% oproti 86,13~\%) -- výrazne väčší efekt než
-pri augmentácii. Umožnenie doučiť aj vyššie konvolučné vrstvy backbonu (nie
-len novú lineárnu hlavu) dovoľuje sieti prispôsobiť si naučené príznaky
-špecificky pre rozlišovanie jedál, namiesto použitia všeobecných príznakov
-naučených na ImageNet.
+Postupné rozmrazovanie je v tomto projekte najúčinnejšie opatrenie --
+zvýšilo testovaciu accuracy M1 o \textbf{6,5~p.\,b.} a M2
+o \textbf{2,8~p.\,b.}
 
-\obrazok[0.9\textwidth]{img/compare_gradual_unfreeze_curves.png}{Vplyv
-postupného rozmrazovania -- priebeh validačného Loss a Accuracy najlepšieho
-behu}{fig:unfreeze-curves}
+\obrazok[0.75\textwidth]{img/m1_compare_gradual_unfreeze_metrics.png}{M1 -- vplyv
+postupného rozmrazovania na testovacie metriky}{fig:m1-unfreeze-metrics}
 
-Priebeh validačnej accuracy (Obr.~\ref{fig:unfreeze-curves}) ukazuje jasný
-skok približne na 7. epoche -- presne vtedy, keď sa rozmrazí \texttt{layer4}.
-Loss a accuracy sa dovtedy vyvíjajú takmer identicky ako pri zamrznutom
-backbone, po rozmrazení prvej vrstvy nasleduje výrazný pokles validačného
-lossu (z $\sim$0,9 na $\sim$0,35) aj skok accuracy (z $\sim$80~\% na
-$\sim$90~\%), po ktorom sa krivka ustáli. Ďalšie rozmrazovanie vrstiev
-(\texttt{layer3}, \texttt{layer2}, \texttt{layer1}) už prináša len malé
-zlepšenie -- rozhodujúci je práve prechod z ,,iba nová hlava`` na ,,doučenie
-poslednej konvolučnej vrstvy``, keďže tá obsahuje najviac úlohovo-špecifické
-príznaky.
+\obrazok[0.9\textwidth]{img/m1_compare_gradual_unfreeze_curves.png}{M1 -- vplyv
+postupného rozmrazovania na priebeh validačného Loss a Accuracy (najlepší
+beh)}{fig:m1-unfreeze-curves}
 
-\obrazok[0.85\textwidth]{img/m1_noaug_confusion.png}{M1 bez augmentácie --
-kontingenčná tabuľka najlepšieho behu (testovacie dáta)}{fig:m1-noaug-confusion}
+\obrazok[0.75\textwidth]{img/m2_compare_gradual_unfreeze_metrics.png}{M2 -- vplyv
+postupného rozmrazovania na testovacie metriky}{fig:m2-unfreeze-metrics}
 
-\obrazok[0.85\textwidth]{img/m1_gradual_confusion.png}{M1 s postupným
+\obrazok[0.9\textwidth]{img/m2_compare_gradual_unfreeze_curves.png}{M2 -- vplyv
+postupného rozmrazovania na priebeh validačného Loss a Accuracy (najlepší
+beh)}{fig:m2-unfreeze-curves}
+
+Priebeh validačnej accuracy (Obr.~\ref{fig:m1-unfreeze-curves}
+a~\ref{fig:m2-unfreeze-curves}) ukazuje pri oboch modeloch skok
+v 7. epoche, keď sa rozmrazí \texttt{layer4}. Pri M1 klesne validačný
+loss z $\sim$0,9 na $\sim$0,35 a accuracy stúpne z $\sim$80~\% na
+$\sim$90~\%. Ďalšie stupne (\texttt{layer3}--\texttt{layer1}) prinášajú už
+len malé zlepšenie. Rozhodujúce je teda doučiť najvyšší konvolučný stupeň,
+ktorého príznaky sú najviac špecifické pre pôvodnú úlohu (ImageNet)
+a najviac profitujú z prispôsobenia na doménu jedál.
+
+Pri M2 je prínos menší. Jedna časť vysvetlenia je, že bloky CBAM už
+v zamrznutej konfigurácii čiastočne prispôsobujú príznaky backbonu úlohe
+(prevážením kanálov a oblastí), takže rozmrazenie má menej čo doháňať.
+Druhá časť je preučenie: po rozmrazení dosahuje M2 trénovaciu accuracy
+$\sim$98~\%, zatiaľ čo validačná sa zastaví na $\sim$90~\%. Validačný loss
+po 8. epoche už neklesá a iba kolíše medzi $\sim$0,41 a 0,47.
+
+\obrazok[0.8\textwidth]{img/m1_gradual_confusion.png}{M1 s postupným
 rozmrazovaním -- kontingenčná tabuľka najlepšieho behu (testovacie
 dáta)}{fig:m1-gradual-confusion}
+
+\obrazok[0.8\textwidth]{img/m2_gradual_confusion.png}{M2 s postupným
+rozmrazovaním -- kontingenčná tabuľka najlepšieho behu (testovacie
+dáta)}{fig:m2-gradual-confusion}
+
+\section{Porovnanie modelov M1 a M2}
+\label{sec:m1m2}
+
+Tabuľka~\ref{tab:m1m2} porovnáva oba modely vo všetkých troch
+konfiguráciách. Štatistická významnosť rozdielu testovacej accuracy bola
+overená \textbf{Welchovým t-testom} (dvojvýberový t-test bez predpokladu
+zhodných rozptylov) nad tromi behmi každého modelu. Pri iba troch behoch
+má test malú silu, preto hodnotu $p$ treba chápať ako orientačnú.
+
+\begin{table}[H]
+    \centering
+    \caption{Porovnanie M1 a M2 -- testovacia accuracy (priemer $\pm$ std z 3 behov) a~Welchov t-test}
+    \label{tab:m1m2}
+    \footnotesize
+    \begin{tabular}{lccccc}
+        \toprule
+        Konfigurácia & M1 & M2 & Rozdiel M2$-$M1 & $p$ & Významný ($\alpha=0{,}05$) \\
+        \midrule
+        Základná (s augm.)      & 86,13 $\pm$ 0,16 & \textbf{89,07 $\pm$ 0,67} & +2,93 & 0,020 & áno \\
+        Bez augmentácie         & 84,31 $\pm$ 0,06 & \textbf{85,53 $\pm$ 0,52} & +1,22 & 0,078 & nie \\
+        Postupné rozmrazovanie  & \textbf{92,60 $\pm$ 0,19} & 91,91 $\pm$ 0,85 & $-$0,69 & 0,369 & nie \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\obrazok[0.85\textwidth]{img/m1m2_accuracy.png}{M1 vs M2 -- testovacia
+accuracy vo všetkých troch konfiguráciách (priemer 3 behov $\pm$
+std)}{fig:m1m2-acc}
+
+\obrazok[0.75\textwidth]{img/m1m2_metrics_baseline.png}{M1 vs M2 (základná
+konfigurácia) -- Accuracy, Precision, Recall a F1}{fig:m1m2-metrics}
+
+\obrazok[0.95\textwidth]{img/m1m2_curves_baseline.png}{M1 vs M2 (základná
+konfigurácia) -- priebeh trénovania najlepšieho behu (prerušovane
+trénovacie, plne validačné dáta)}{fig:m1m2-curves}
+
+\obrazok[\textwidth]{img/m1m2_class_recall.png}{M1 vs M2 (základná
+konfigurácia) -- recall jednotlivých tried, súčet troch behov (testovacie
+dáta)}{fig:m1m2-recall}
+
+\subsection{Diskusia}
+
+\paragraph{Zamrznutý backbone.} Pri zamrznutom backbone je M2 štatisticky
+významne lepší ako M1 (+2,9~p.\,b., $p = 0{,}020$). Zlepšenie je plošné --
+M2 má vyšší recall pri 12 z 15 tried, pri jednej rovnaký a pri dvoch o 1 obrázok nižší
+(Obr.~\ref{fig:m1m2-recall}). Najviac pomohol pri triedach, kde M1 zlyhával
+najviac: \emph{pizza} (80,7 $\rightarrow$ 90,0~\%), \emph{beef\_tartare}
+(82,3 $\rightarrow$ 89,3~\%) a \emph{pancakes} (80,3 $\rightarrow$ 86,7~\%).
+Pri \emph{french\_fries}, \emph{steak} a \emph{waffles} sú modely prakticky
+rovnaké. Pri interpretácii však treba zohľadniť, že M2 nemá len
+attention mechanizmus, ale aj 24-krát viac trénovateľných parametrov
+(731 tisíc oproti 30 tisícom). M1 v tejto konfigurácii môže meniť iba
+lineárnu vrstvu, M2 môže cez CBAM ovplyvniť aj vnútorné príznaky backbonu.
+Časť zlepšenia preto pochádza zo samotnej väčšej prispôsobiteľnosti, nie
+nutne z mechanizmu pozornosti ako takého.
+
+\paragraph{Bez augmentácie.} Bez augmentácie je M2 stále lepší
+(+1,2~p.\,b.), rozdiel však nie je štatisticky významný ($p = 0{,}078$).
+Väčšia kapacita M2 sa bez augmentácie čiastočne minie na prispôsobenie sa
+trénovacím obrázkom.
+
+\paragraph{Postupné rozmrazovanie.} Keď sa rozmrazí aj backbone, oba modely
+majú k dispozícii desiatky miliónov trénovateľných parametrov a výhoda
+M2 zanikne -- M1 je dokonca o 0,7~p.\,b. lepší, rozdiel však nie je
+významný ($p = 0{,}37$). Pri plnom doladení siete teda CBAM na tomto
+datasete neprináša merateľné zlepšenie, zato zvyšuje náchylnosť na
+preučenie a rozptyl výsledkov.
+
+\paragraph{Stabilita a výpočtová náročnosť.} M2 má vo všetkých
+konfiguráciách 4- až 9-krát väčšiu smerodajnú odchýlku než M1 (0,5--0,85
+oproti 0,06--0,19~p.\,b.). Výsledok M2 teda závisí viac od náhodnej
+inicializácie blokov CBAM. Trénovanie M2 trvalo približne 2,2-krát dlhšie
+(Tabuľka~\ref{tab:summary}), pretože gradient musí prechádzať cez backbone
+aj pri zamrznutých váhach. Časy sú orientačné -- počas trénovania M2 bola
+GPU čiastočne zdieľaná s inými procesmi, čo je vidieť aj na rozdielnych
+časoch jednotlivých behov postupného rozmrazovania (23 až 39 minút).
 
 \section{Zhrnutie výsledkov}
 \label{sec:zhrnutie}
 
 \begin{table}[H]
     \centering
-    \caption{Súhrnné porovnanie všetkých troch konfigurácií M1 (priemer $\pm$ std z 3 behov)}
+    \caption{Súhrnné porovnanie všetkých konfigurácií M1 a M2 (priemer $\pm$ std z 3 behov, testovacie dáta)}
     \label{tab:summary}
     \footnotesize
-    \begin{tabular}{lcccc}
+    \begin{tabular}{llcccc}
         \toprule
-        Konfigurácia & Accuracy & Precision & Recall & Čas trénovania \\
+        Model & Konfigurácia & Accuracy & Precision & Recall & Čas (3 behy) \\
         \midrule
-        M1 (základná, s augmentáciou)   & 86,13 $\pm$ 0,16~\% & 86,43 $\pm$ 0,15~\% & 86,13 $\pm$ 0,16~\% & 0:29:50 \\
-        M1 bez augmentácie              & 84,31 $\pm$ 0,06~\% & 84,67 $\pm$ 0,08~\% & 84,31 $\pm$ 0,06~\% & 0:27:14 \\
-        M1 s postupným rozmrazovaním    & \textbf{92,60 $\pm$ 0,19~\%} & \textbf{92,75 $\pm$ 0,15~\%} & \textbf{92,60 $\pm$ 0,19~\%} & 0:44:10 \\
+        M1 & základná (s augm.)     & 86,13 $\pm$ 0,16 & 86,43 $\pm$ 0,15 & 86,13 $\pm$ 0,16 & 0:29:50 \\
+        M1 & bez augmentácie        & 84,31 $\pm$ 0,06 & 84,67 $\pm$ 0,08 & 84,31 $\pm$ 0,06 & 0:27:14 \\
+        M1 & postupné rozmraz.      & \textbf{92,60 $\pm$ 0,19} & \textbf{92,75 $\pm$ 0,15} & \textbf{92,60 $\pm$ 0,19} & 0:44:10 \\
+        \midrule
+        M2 & základná (s augm.)     & 89,07 $\pm$ 0,67 & 89,33 $\pm$ 0,64 & 89,07 $\pm$ 0,67 & 1:06:25 \\
+        M2 & bez augmentácie        & 85,53 $\pm$ 0,52 & 86,01 $\pm$ 0,51 & 85,53 $\pm$ 0,52 & 1:04:46 \\
+        M2 & postupné rozmraz.      & 91,91 $\pm$ 0,85 & 92,05 $\pm$ 0,79 & 91,91 $\pm$ 0,85 & 1:36:38 \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-Oba doplnkové experimenty potvrdili očakávaný smer efektu -- augmentácia aj
-postupné rozmrazovanie vrstiev zvyšujú testovaciu úspešnosť, pričom
-rozmrazovanie vrstiev backbonu má na tomto datasete podstatne väčší vplyv
-(6,5~p.\,b.) než augmentácia dát (1,8~p.\,b.). To naznačuje, že hlavným
-limitujúcim faktorom základnej konfigurácie M1 nie je preučenie (ktoré rieši
-augmentácia), ale nedostatočná kapacita samotného trénovaného lineárneho
-klasifikátora nad všeobecnými, na ImageNet naučenými príznakmi.
+Najlepší výsledok dosiahol \textbf{M1 s postupným rozmrazovaním
+(92,60~\%)}, ktorý je zároveň najstabilnejší a výrazne rýchlejší ako
+porovnateľná konfigurácia M2. Poradie vplyvu skúmaných faktorov je pri
+oboch modeloch rovnaké: postupné rozmrazovanie $>$ augmentácia. Attention
+vrstva CBAM priniesla štatisticky významné zlepšenie iba pri zamrznutom
+backbone s augmentáciou. Pri rozmrazenom backbone významné zlepšenie
+nepriniesla.
 
 \section{Implementácia}
 \label{sec:implementacia}
 
 Projekt je napísaný v Pythone (PyTorch, torchvision, pytorch-grad-cam,
-pandas, matplotlib, scikit-learn). Kód v priečinku \texttt{src/} je
+pandas, matplotlib, scikit-learn, SciPy). Kód v priečinku \texttt{src/} je
 štruktúrovaný takto:
 
 \begin{table}[H]
@@ -307,30 +535,47 @@ pandas, matplotlib, scikit-learn). Kód v priečinku \texttt{src/} je
         \texttt{config.py} & centrálna konfigurácia (cesty, split, hyperparametre) \\
         \texttt{data\_preprocessing/split\_dataset.py} & rozdelenie datasetu 80/10/10 \\
         \texttt{data\_preprocessing/dataset.py} & \texttt{Dataset}/\texttt{DataLoader} z manifestu \\
-        \texttt{data\_preprocessing/transforms.py} & augmentované a plain transformácie \\
-        \texttt{models/M1\_CNN\_ResNet50.py} & architektúra M1 (ResNet50 + postupné rozmrazovanie) \\
-        \texttt{engine.py} & spoločná tréningová/evaluačná slučka pre všetky modely \\
+        \texttt{data\_preprocessing/transforms.py} & augmentované a neaugmentované transformácie \\
+        \texttt{models/M1\_CNN\_ResNet50.py} & architektúra M1 \\
+        \texttt{models/M2\_CNN\_ResNet50\_CBAM.py} & architektúra M2 (ResNet50 + CBAM) \\
+        \texttt{engine.py} & spoločná tréningová/evaluačná slučka, rozvrh rozmrazovania \\
         \texttt{experiment.py} & 3 behy, ukladanie metrík, grafov a checkpointov \\
-        \texttt{evaluation.py} & výpočet metrík, kontingenčná tabuľka, štatistiky behov \\
+        \texttt{evaluation.py} & metriky, kontingenčná tabuľka, štatistiky behov \\
         \texttt{plots.py} & grafy priebehu trénovania a kontingenčných tabuliek \\
         \texttt{gradcam.py} & GradCAM vizualizácia \\
-        \texttt{M1\_ResNet50\_Train/train\_m1.py} & trénovanie základnej M1 konfigurácie \\
-        \texttt{M1\_ResNet50\_Train/train\_m1\_no\_augmentation.py} & ablácia bez augmentácie \\
-        \texttt{M1\_ResNet50\_Train/train\_m1\_gradual\_unfreeze.py} & ablácia s postupným rozmrazovaním \\
+        \texttt{M1\_ResNet50\_Train/train\_m1*.py} & M1: základná, bez augm., rozmrazovanie \\
         \texttt{M1\_ResNet50\_Train/gradcam\_m1.py} & GradCAM pre najlepší beh M1 \\
-        \texttt{summarize\_results.py} & súhrnná tabuľka všetkých natrénovaných modelov \\
-        \texttt{compare\_M1\_experiments.py} & porovnanie augmentácie a rozmrazovania voči základnej M1 \\
+        \texttt{M2\_ResNet\_CBAM/train\_m2*.py} & M2: základná, bez augm., rozmrazovanie \\
+        \texttt{M2\_ResNet\_CBAM/gradcam\_m2.py} & GradCAM pre najlepší beh M2 \\
+        \texttt{summarize\_results.py} & súhrnná tabuľka konfigurácií každého modelu \\
+        \texttt{compare\_ablations.py} & augmentácia a rozmrazovanie voči základnej konfigurácii \\
+        \texttt{compare\_M1\_M2.py} & porovnanie M1 a M2, Welchov t-test \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-Všetky tri konfigurácie M1 využívajú tú istú tréningovú/evaluačnú
-infraštruktúru (\texttt{engine.py}, \texttt{experiment.py}), líšia sa iba
-jedným parametrom (\texttt{augment\_train} alebo
-\texttt{unfreeze\_schedule}), takže výsledky sú priamo porovnateľné a
-rozdiely v úspešnosti možno pripísať výlučne skúmanému faktoru. Pre každý beh
-sa do \texttt{Results/<konfigurácia>/run<N>/} ukladá kompletná história
-trénovania (\texttt{history.csv}), checkpoint najlepšieho modelu, kontingenčná
-tabuľka (CSV aj PNG) a graf priebehu trénovania; na úrovni
-\texttt{Results/<konfigurácia>/} potom súhrn troch behov (\texttt{summary.json})
-a grafy pre najlepší beh.
+Všetky konfigurácie využívajú tú istú tréningovú a evaluačnú infraštruktúru
+(\texttt{engine.py}, \texttt{experiment.py}). Líšia sa iba funkciou, ktorá
+vytvorí model, a parametrami \texttt{augment\_train}
+a \texttt{unfreeze\_schedule}, takže výsledky sú priamo porovnateľné.
+Výsledky sú v priečinku \texttt{Results/} rozdelené podľa modelu:
+
+\begin{itemize}
+    \item \texttt{Results/M1\_CNN/} -- konfigurácie \texttt{M1\_cnn},
+          \texttt{M1\_cnn\_no\_augmentation}, \texttt{M1\_cnn\_gradual\_unfreeze},
+          porovnania v \texttt{comparisons/} a súhrn \texttt{results\_summary.md},
+    \item \texttt{Results/M2\_CNN\_CBAM/} -- analogicky \texttt{M2\_cnn\_cbam},
+          \texttt{M2\_cnn\_cbam\_no\_augmentation},
+          \texttt{M2\_cnn\_cbam\_gradual\_unfreeze}, \texttt{comparisons/}
+          a \texttt{results\_summary.md},
+    \item \texttt{Results/M1\_vs\_M2/} -- porovnanie oboch modelov
+          (tabuľka s t-testom a grafy).
+\end{itemize}
+
+\noindent Každá konfigurácia obsahuje pre každý beh (\texttt{run1}--\texttt{run3})
+históriu trénovania (\texttt{history.csv}), kontingenčnú tabuľku (CSV aj PNG)
+a graf priebehu trénovania. Na úrovni konfigurácie je súhrn troch behov
+(\texttt{summary.json}), grafy najlepšieho behu a kompletný výpis trénovania
+(\texttt{training\_log.txt}). Checkpointy (\texttt{best.pt}, $\sim$90~MB)
+sa kvôli veľkosti neukladajú do gitu. Dajú sa znova vytvoriť spustením
+trénovacích skriptov.

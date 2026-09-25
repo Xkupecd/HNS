@@ -1,5 +1,5 @@
-"""Collects every trained model's summary.json into one comparison table
-(CSV + Markdown) for the documentation.
+"""Collects every trained configuration's summary.json into one comparison
+table (CSV + Markdown) per model group, e.g. Results/M1_CNN/results_summary.md.
 
 Usage:
     python -m src.summarize_results
@@ -18,9 +18,9 @@ def fmt(mean: float, std: float) -> str:
     return f"{mean:.4f} +/- {std:.4f}"
 
 
-def main() -> None:
+def summarize_group(group_dir: Path) -> None:
     rows = []
-    for model_dir in sorted(config.RESULTS_DIR.iterdir()):
+    for model_dir in sorted(group_dir.iterdir()):
         summary_path = model_dir / "summary.json"
         if not summary_path.exists():
             continue
@@ -35,18 +35,24 @@ def main() -> None:
         })
 
     if not rows:
-        print("No Results/<model>/summary.json found yet - train a model first.")
+        print(f"No {group_dir.name}/<config>/summary.json found yet - train a model first.")
         return
 
     df = pd.DataFrame(rows)
-    csv_path = config.RESULTS_DIR / "results_summary.csv"
-    md_path = config.RESULTS_DIR / "results_summary.md"
+    csv_path = group_dir / "results_summary.csv"
+    md_path = group_dir / "results_summary.md"
     df.to_csv(csv_path, index=False)
     md_path.write_text(df.to_markdown(index=False))
 
     print(df.to_string(index=False))
-    print(f"\nSaved: {csv_path}")
-    print(f"Saved: {md_path}")
+    print(f"Saved: {csv_path}")
+    print(f"Saved: {md_path}\n")
+
+
+def main() -> None:
+    for group_dir in (config.M1_RESULTS_DIR, config.M2_RESULTS_DIR):
+        if group_dir.exists():
+            summarize_group(group_dir)
 
 
 if __name__ == "__main__":

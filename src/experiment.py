@@ -28,6 +28,7 @@ def set_seed(seed: int) -> None:
 
 def run_experiment(
     model_name: str,
+    results_root,
     build_model_fn,
     augment_train: bool = True,
     unfreeze_schedule: dict[int, list[str]] | None = None,
@@ -36,11 +37,11 @@ def run_experiment(
     epochs: int = config.EPOCHS,
 ) -> dict:
     """Trains `build_model_fn` `num_runs` times and writes everything to
-    Results/<model_name>/: per-run history/checkpoint/confusion matrix/plots,
+    <results_root>/<model_name>/: per-run history/checkpoint/confusion matrix/plots,
     the best run's plots, training_log.txt, and summary.json."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model_dir = config.RESULTS_DIR / model_name
+    model_dir = results_root / model_name
     model_dir.mkdir(parents=True, exist_ok=True)
     tee_stdout_to_file(model_dir / "training_log.txt")
     print(f"device={device}")

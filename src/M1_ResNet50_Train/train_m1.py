@@ -16,6 +16,7 @@ _ROOT = Path(__file__).resolve()
 while _ROOT.name != "src":
     _ROOT = _ROOT.parent
 sys.path.append(str(_ROOT.parent))
+from src import config
 from src.experiment import run_experiment
 from src.models.M1_CNN_ResNet50 import build_model
 
@@ -23,6 +24,7 @@ from src.models.M1_CNN_ResNet50 import build_model
 def main() -> None:
     run_experiment(
         "M1_cnn",
+        results_root=config.M1_RESULTS_DIR,
         build_model_fn=lambda num_classes: build_model(num_classes, freeze_backbone=True),
         augment_train=True,
     )

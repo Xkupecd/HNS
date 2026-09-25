@@ -26,6 +26,7 @@ def main() -> None:
     schedule = build_unfreeze_schedule(UNFREEZE_STAGES, config.EPOCHS)
     run_experiment(
         "M1_cnn_gradual_unfreeze",
+        results_root=config.M1_RESULTS_DIR,
         build_model_fn=lambda num_classes: build_model(num_classes, freeze_backbone=True),
         augment_train=True,
         unfreeze_schedule=schedule,

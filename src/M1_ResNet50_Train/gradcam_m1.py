@@ -1,7 +1,7 @@
 """Generates a GradCAM grid (correct + misclassified test samples) for M1's
-best run, saved to Results/M1_cnn/gradcam_examples.png.
+best run, saved to Results/M1_CNN/M1_cnn/gradcam_examples.png.
 
-Requires train_m1.py to have already produced Results/M1_cnn/summary.json.
+Requires train_m1.py to have already produced Results/M1_CNN/M1_cnn/summary.json.
 
 Usage:
     python -m src.M1_ResNet50_Train.gradcam_m1
@@ -26,7 +26,7 @@ MODEL_NAME = "M1_cnn"
 
 def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model_dir = config.RESULTS_DIR / MODEL_NAME
+    model_dir = config.M1_RESULTS_DIR / MODEL_NAME
     summary = json.loads((model_dir / "summary.json").read_text())
     best_run_idx = summary["per_run_acc"].index(max(summary["per_run_acc"])) + 1
 

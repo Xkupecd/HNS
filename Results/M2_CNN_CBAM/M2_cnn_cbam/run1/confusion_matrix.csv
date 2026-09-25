@@ -1,0 +1,16 @@
+,beef_tartare,chicken_wings,cup_cakes,donuts,dumplings,french_fries,greek_salad,hot_dog,lasagna,lobster_bisque,pancakes,panna_cotta,pizza,steak,waffles
+beef_tartare,94,0,0,1,0,0,0,0,4,0,0,1,0,0,0
+chicken_wings,0,90,0,2,0,0,0,2,4,0,0,0,0,2,0
+cup_cakes,1,0,84,8,2,0,0,0,0,0,0,5,0,0,0
+donuts,0,1,1,92,1,0,0,0,0,0,2,2,0,0,1
+dumplings,0,0,0,1,95,0,1,0,2,0,0,1,0,0,0
+french_fries,0,0,0,0,3,89,1,2,1,0,1,2,0,1,0
+greek_salad,0,1,0,0,0,1,94,0,1,0,0,0,1,1,1
+hot_dog,1,0,0,4,2,3,0,84,1,0,4,0,0,1,0
+lasagna,1,2,0,0,0,0,0,0,89,0,0,0,7,0,1
+lobster_bisque,0,1,0,1,2,0,0,0,1,92,0,3,0,0,0
+pancakes,3,1,0,3,1,0,0,0,0,0,86,1,0,1,4
+panna_cotta,3,0,1,0,1,0,0,0,1,6,0,87,0,1,0
+pizza,0,1,0,0,0,2,2,0,4,1,0,0,88,2,0
+steak,6,4,0,1,1,0,0,0,2,0,5,0,1,79,1
+waffles,0,0,0,3,3,0,0,0,1,1,1,0,2,1,88
