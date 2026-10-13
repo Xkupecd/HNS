@@ -35,18 +35,23 @@ def run_experiment(
     unfreeze_fn=None,
     num_runs: int = config.NUM_RUNS,
     epochs: int = config.EPOCHS,
+    mean: tuple = config.IMAGENET_MEAN,
+    std: tuple = config.IMAGENET_STD,
 ) -> dict:
     """Trains `build_model_fn` `num_runs` times and writes everything to
     <results_root>/<model_name>/: per-run history/checkpoint/confusion matrix/plots,
-    the best run's plots, training_log.txt, and summary.json."""
+    the best run's plots, training_log.txt, and summary.json.
+
+    `mean`/`std` set the input normalization; they must match the statistics
+    the backbone was pretrained with (ImageNet for most models)."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model_dir = results_root / model_name
     model_dir.mkdir(parents=True, exist_ok=True)
     tee_stdout_to_file(model_dir / "training_log.txt")
-    print(f"device={device}")
+    print(f"device={device} normalization mean={mean} std={std}")
 
-    loaders = build_dataloaders(augment_train=augment_train)
+    loaders = build_dataloaders(augment_train=augment_train, mean=mean, std=std)
     class_names = config.CLASSES
 
     total_start = time.perf_counter()

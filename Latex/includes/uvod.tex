@@ -1,22 +1,24 @@
 Cieľom projektu je porovnať trénovanie vybraných architektúr konvolučných
 neurónových sietí, vizuálnych transformerov a hybridných modelov pri riešení
 úlohy klasifikácie obrazu pomocou transferového učenia (transfer learning).
-Táto dokumentácia pokrýva prvé dva modely zo zadania:
+Dokumentácia pokrýva všetkých päť modelov zo zadania:
 
 \begin{itemize}
     \item \textbf{M1} -- CNN ResNet50 s transferovým učením,
     \item \textbf{M2} -- rovnaký ResNet50 doplnený o attention vrstvu
           \textbf{CBAM} (Convolutional Block Attention Module),
+    \item \textbf{M3} -- optimalizovaná CNN \textbf{ConvNeXt-T},
+    \item \textbf{M4} -- vizuálny transformer \textbf{Swin-T},
+    \item \textbf{M5} -- hybridný model \textbf{CoAtNet-0}, ktorý kombinuje
+          konvolučné a transformerové bloky.
 \end{itemize}
 
-\noindent a pre oba modely aj dva doplnkové experimenty, ktoré zadanie vyžaduje
-aspoň pre jeden model:
-
-\begin{itemize}
-    \item vplyv augmentácie trénovacích dát na úspešnosť klasifikácie,
-    \item vplyv postupného rozmrazovania vrstiev (\emph{gradual unfreezing})
-          predtrénovanej siete oproti trénovaniu so zamrznutým backbonom.
-\end{itemize}
+\noindent Každý model bol trénovaný v dvoch konfiguráciách: so
+\textbf{zamrznutým backbonom} (trénuje sa iba nová výstupná vrstva) a
+s \textbf{postupným rozmrazovaním vrstiev} (\emph{gradual unfreezing})
+predtrénovanej siete. Pre modely M1 a M2 bol navyše vyhodnotený
+\textbf{vplyv augmentácie} trénovacích dát. Oba doplnkové experimenty
+zadanie vyžaduje aspoň pre jeden model.
 
 Ako dataset bol použitý výber z databázy \textbf{Food-101} -- klasifikácia
 obrazov jedál. Z pôvodných 101 tried bolo vybraných 15 tried, každá s 1000
@@ -25,10 +27,12 @@ obrázkami, spolu 15\,000 obrázkov. Dataset bol náhodne rozdelený v pomere
 obrázkov) pri zachovaní rovnakého zastúpenia tried vo všetkých troch
 množinách.
 
-Každá konfigurácia každého modelu bola trénovaná trikrát a výsledky boli
-štatisticky vyhodnotené (priemer, smerodajná odchýlka, pri porovnaní M1 a M2
-aj Welchov t-test). Pre najlepší beh je zobrazený priebeh trénovania (Loss
-a Accuracy na trénovacích a validačných dátach), na testovacích dátach bola
-vyčíslená úspešnosť (Accuracy), presnosť (Precision) a senzitivita (Recall)
-spolu s kontingenčnou tabuľkou. Pre vybrané testovacie vzorky bola vykonaná
-vizualizácia rozhodovania siete metódou GradCAM.
+Všetky modely boli trénované s rovnakými parametrami a každá konfigurácia
+trikrát. Výsledky boli štatisticky vyhodnotené (priemer, smerodajná
+odchýlka, Welchov t-test pri porovnaní dvoch modelov a jednocestná ANOVA
+pri porovnaní všetkých piatich). Pre najlepší beh je zobrazený priebeh
+trénovania (Loss a Accuracy na trénovacích a validačných dátach), na
+testovacích dátach bola vyčíslená úspešnosť (Accuracy), presnosť (Precision)
+a senzitivita (Recall) spolu s kontingenčnou tabuľkou. Pre vybrané
+testovacie vzorky bola vykonaná vizualizácia rozhodovania siete metódou
+GradCAM.

@@ -50,7 +50,8 @@ def summarize_group(group_dir: Path) -> None:
 
 
 def main() -> None:
-    for group_dir in (config.M1_RESULTS_DIR, config.M2_RESULTS_DIR):
+    for group_dir in (config.M1_RESULTS_DIR, config.M2_RESULTS_DIR, config.M3_RESULTS_DIR,
+                      config.M4_RESULTS_DIR, config.M5_RESULTS_DIR):
         if group_dir.exists():
             summarize_group(group_dir)
 

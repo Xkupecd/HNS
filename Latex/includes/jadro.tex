@@ -62,7 +62,7 @@ architektúre, resp. skúmanému faktoru:
 
 \begin{table}[H]
     \centering
-    \caption{Parametre trénovania (spoločné pre M1 aj M2)}
+    \caption{Parametre trénovania (spoločné pre všetky modely M1--M5)}
     \label{tab:params}
     \begin{tabular}{ll}
         \toprule
@@ -87,6 +87,17 @@ nepoškodil predtrénované váhy, a zároveň dostatočne veľký, aby sa nová
 výstupná vrstva naučila za 30 epoch. Veľkosť dávky 128 bola zvolená ako
 maximum, ktoré sa pri postupnom rozmrazovaní M2 (najnáročnejšia
 konfigurácia, $\sim$5,8~GiB) zmestí do pamäte použitej GPU (8~GiB).
+
+Modely M3--M5 by po úplnom rozmrazení pri dávke 128 potrebovali 7,7~GiB
+(ConvNeXt-T), 8,7~GiB (Swin-T) a 10,6~GiB (CoAtNet-0), čo je na hranici
+alebo nad kapacitou GPU. Aby zostala veľkosť dávky rovnaká pre všetky
+modely, pri ich postupnom rozmrazovaní bol zapnutý \textbf{gradient
+checkpointing} -- aktivácie vnútri stupňov sa počas dopredného prechodu
+neukladajú, ale pri spätnom prechode sa prepočítajú znova. Pamäť klesne na
+2,3--3,3~GiB, výsledok výpočtu sa nemení, trénovanie je však pomalšie.
+Jediný parameter, ktorý sa medzi modelmi líši, je normalizácia vstupu: musí
+zodpovedať štatistikám, s ktorými bol model predtrénovaný (ImageNet pre
+M1--M4, stredná hodnota aj smerodajná odchýlka 0,5 pre CoAtNet v M5).
 
 Metriky Precision, Recall a F1 sú počítané ako \emph{makro} priemer cez
 triedy. Keďže testovacia množina má pre každú triedu presne 100 obrázkov,
@@ -485,12 +496,543 @@ aj pri zamrznutých váhach. Časy sú orientačné -- počas trénovania M2 bol
 GPU čiastočne zdieľaná s inými procesmi, čo je vidieť aj na rozdielnych
 časoch jednotlivých behov postupného rozmrazovania (23 až 39 minút).
 
+\section{Výber predtrénovaných modelov M3--M5}
+\label{sec:vyber}
+
+Pre modely M3--M5 boli z knižnice \textbf{timm} (PyTorch Image Models)
+vybrané architektúry, ktoré spĺňajú dve podmienky. Po prvé, sú
+predtrénované \textbf{iba na ImageNet-1k}, teda na rovnakých dátach ako
+ResNet50 v M1 a M2 -- väčšie predtrénovacie datasety (napr. ImageNet-22k)
+by modelom dali výhodu, ktorá nesúvisí s architektúrou. Po druhé, majú
+\textbf{podobnú veľkosť a výpočtovú náročnosť} ako ResNet50 (verzie
+,,Tiny`` resp. ,,0``), takže rozdiely vo výsledkoch možno pripísať
+architektúre, nie veľkosti modelu.
+
+\begin{table}[H]
+    \centering
+    \caption{Porovnanie zvolených predtrénovaných modelov (počet parametrov pri 1000 triedach ImageNet)}
+    \label{tab:vyber}
+    \footnotesize
+    \begin{tabular}{lllccc}
+        \toprule
+        Model & Typ & Predtrénované váhy & Parametre & GMAC & ImageNet top-1 \\
+        \midrule
+        M1 ResNet50    & CNN & \texttt{IMAGENET1K\_V2} (torchvision) & 25,6 mil. & 4,1 & 80,9~\% \\
+        M3 ConvNeXt-T  & optimalizovaná CNN & \texttt{convnext\_tiny.fb\_in1k} & 28,6 mil. & 4,5 & 82,1~\% \\
+        M4 Swin-T      & vizuálny transformer & \texttt{swin\_tiny\_patch4\_window7\_224.ms\_in1k} & 28,3 mil. & 4,5 & 81,2~\% \\
+        M5 CoAtNet-0   & hybridný model & \texttt{coatnet\_0\_rw\_224.sw\_in1k} & 27,4 mil. & 4,4 & 82,4~\% \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{itemize}
+    \item \textbf{M3 -- ConvNeXt-T} (Liu a kol., \emph{A ConvNet for the
+          2020s}, 2022) vznikol postupnou modernizáciou ResNet50 podľa
+          návrhových princípov vizuálnych transformerov: vstupný
+          ,,patchify`` stem $4\times4$, invertované bottleneck bloky,
+          hĺbkové (depthwise) konvolúcie $7\times7$ s veľkým receptívnym
+          poľom, LayerNorm namiesto BatchNorm a aktivácia GELU. Je to stále
+          čistá CNN, ktorá pri rovnakej náročnosti dosahuje úroveň
+          transformerov. Verzia Tiny je priamym náprotivkom ResNet50.
+    \item \textbf{M4 -- Swin-T} (Liu a kol., \emph{Swin Transformer}, 2021)
+          je hierarchický vizuálny transformer. Self-attention počíta iba
+          v lokálnych oknách $7\times7$ tokenov, ktoré sa medzi
+          susednými blokmi posúvajú (\emph{shifted windows}), takže
+          informácia sa šíri cez hranice okien a zložitosť rastie lineárne
+          s veľkosťou obrazu. Medzi stupňami sa rozlíšenie zmenšuje
+          (56 $\rightarrow$ 28 $\rightarrow$ 14 $\rightarrow$ 7), čím vzniká
+          pyramída príznakov podobná CNN. Zo zadaním ponúkaných možností
+          (ViT, DeiT, Swin) bol Swin-T zvolený preto, že má rovnakú veľkosť
+          ako ConvNeXt-T a CoAtNet-0 (autori ConvNeXt ho používajú ako
+          priamu referenciu) a jeho 4 stupne umožňujú rovnaký rozvrh
+          postupného rozmrazovania ako pri ResNet50. Pôvodný ViT-B/16
+          (86~mil. parametrov, 17,6~GMAC) je približne 4-krát náročnejší a po
+          rozmrazení by sa pri dávke 128 nezmestil do 8~GiB GPU, DeiT-S
+          (22~mil., 79,9~\%) je čistý ViT s nižšou presnosťou na ImageNet.
+    \item \textbf{M5 -- CoAtNet-0} (Dai a kol., \emph{CoAtNet: Marrying
+          Convolution and Attention}, 2021) spája konvolúciu a pozornosť
+          ,,vertikálne``: prvé dva stupne tvoria konvolučné bloky MBConv
+          (hĺbkovo separovateľné konvolúcie s BatchNorm), ktoré dodávajú
+          induktívny predpoklad lokality vhodný pre menšie dáta, posledné
+          dva stupne sú transformerové bloky s relatívnou pozornosťou
+          s globálnym receptívnym poľom. Keďže pôvodné váhy autorov nie sú
+          verejne dostupné, bola použitá implementácia a váhy z timm
+          (variant \texttt{rw}). Tento model bol predtrénovaný s normalizáciou
+          vstupu so strednou hodnotou aj smerodajnou odchýlkou 0,5, ktorá
+          bola preto použitá aj pri trénovaní a GradCAM.
+\end{itemize}
+
+\subsection{Spoločný postup pre M3--M5}
+\label{sec:m345-postup}
+
+Všetky tri modely sú vytvorené rovnako ako M1: predtrénované váhy, nová
+lineárna výstupná vrstva s 15 výstupmi (768 vstupov, 11\,535 parametrov)
+a v základnej konfigurácii \textbf{zamrznutý backbone}, v ktorom sa trénuje
+iba táto nová vrstva. Druhá konfigurácia, \textbf{postupné rozmrazovanie},
+používa rovnaký rozvrh ako M1 a M2 (kapitola~\ref{sec:unfreeze}): prvých
+6 epoch sa trénuje iba výstupná vrstva, potom sa v 7., 13., 19. a 25. epoche
+rozmrazí vždy jeden stupeň backbonu od posledného po prvý. S posledným
+stupňom sa rozmrazí aj záverečná normalizačná vrstva (LayerNorm), ktorá
+priamo napája klasifikátor. Vstupná časť (stem resp. patch embedding)
+zostáva zamrznutá, rovnako ako vstupná konvolúcia ResNet50.
+
+\begin{table}[H]
+    \centering
+    \caption{Postupné rozmrazovanie M3--M5 -- počet rozmrazených parametrov v jednotlivých epochách}
+    \label{tab:m345-unfreeze}
+    \footnotesize
+    \begin{tabular}{lccc}
+        \toprule
+        Epocha & M3 ConvNeXt-T & M4 Swin-T & M5 CoAtNet-0 \\
+        \midrule
+        7.  & \texttt{stages.3} +15,47 mil. & \texttt{layers.3} +15,37 mil. & \texttt{stages.3} (transformer) +12,85 mil. \\
+        13. & \texttt{stages.2} +11,11 mil. & \texttt{layers.2} +10,96 mil. & \texttt{stages.2} (transformer) +12,15 mil. \\
+        19. & \texttt{stages.1} +0,99 mil.  & \texttt{layers.1} +0,97 mil.  & \texttt{stages.1} (MBConv) +1,41 mil. \\
+        25. & \texttt{stages.0} +0,24 mil.  & \texttt{layers.0} +0,22 mil.  & \texttt{stages.0} (MBConv) +0,24 mil. \\
+        \midrule
+        Celkovo parametrov & 27,83 mil. & 27,53 mil. & 26,68 mil. \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+GradCAM je pri všetkých troch modeloch aplikovaný na výstup posledného
+stupňa (mapa $7\times7$ s 768 kanálmi), teda na príznaky, ktoré po
+priemerovaní vstupujú do klasifikátora -- ide o rovnakú úroveň ako
+\texttt{layer4} pri M1. ConvNeXt a CoAtNet majú príznaky vo formáte
+$C\times H\times W$ ako bežná CNN. Swin pracuje s mapou tokenov vo formáte
+$H\times W\times C$, ktorú bolo pred výpočtom GradCAM treba preusporiadať
+(\texttt{reshape\_transform}). Pri Swin bola vyskúšaná aj vrstva odporúčaná
+dokumentáciou knižnice pytorch-grad-cam (prvá LayerNorm posledného bloku),
+tá však na tomto datasete dávala výrazné artefakty v rohoch obrazu, preto
+bol zvolený výstup stupňa.
+
+Modely M3--M5 boli trénované priamo vo Windows na rovnakej GPU. Kvôli
+pamäti RAM bolo použitých 8 procesov na načítanie dát (namiesto 16). Počet
+procesov ovplyvňuje iba rýchlosť, nie výsledky. Spolu s gradient
+checkpointingom pri rozmrazovaní to znamená, že časy trénovania M3--M5 sú
+s časmi M1 a M2 porovnateľné iba približne.
+
+\section{Model M3 -- ConvNeXt-T}
+\label{sec:m3}
+
+\subsection{Zamrznutý backbone}
+
+\obrazok[0.9\textwidth]{img/m3_curves.png}{M3 (zamrznutý backbone) --
+priebeh trénovania najlepšieho behu (Loss a Accuracy)}{fig:m3-curves}
+
+Už po prvej epoche má M3 validačnú accuracy $\sim$82~\% (M1 $\sim$69~\%),
+príznaky ConvNeXt sú teda pre jedlá oveľa lepšie oddeliteľné lineárnym
+klasifikátorom. Trénovacia accuracy na konci zostáva mierne pod validačnou
+(88,6--88,9~\% oproti 89,7--90,1~\%), pretože trénovacie obrázky sú
+augmentované, a validačný loss klesá až do poslednej epochy -- model sa
+nepreučuje a s viac epochami by sa ešte mierne zlepšil.
+
+\begin{table}[H]
+    \centering
+    \caption{M3 -- testovacie metriky (priemer $\pm$ smerodajná odchýlka z 3 behov)}
+    \label{tab:m3-metrics}
+    \begin{tabular}{lcc}
+        \toprule
+        Metrika & Zamrznutý backbone & Postupné rozmrazovanie \\
+        \midrule
+        Accuracy  & 89,62 $\pm$ 0,30~\% & \textbf{93,49 $\pm$ 0,36~\%} \\
+        Precision & 89,82 $\pm$ 0,31~\% & \textbf{93,60 $\pm$ 0,35~\%} \\
+        Recall    & 89,62 $\pm$ 0,30~\% & \textbf{93,49 $\pm$ 0,36~\%} \\
+        F1        & 89,62 $\pm$ 0,30~\% & \textbf{93,50 $\pm$ 0,36~\%} \\
+        Čas (3 behy) & 0:31:19 & 0:51:13 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Jednotlivé behy so zamrznutým backbonom dosiahli 89,27~\%, 89,60~\%
+a 90,00~\%. Iba s 11\,535 trénovateľnými parametrami je M3 lepší ako M1
+(+3,5~p.\,b.) aj ako M2 s blokmi CBAM (+0,6~p.\,b.).
+
+\obrazok[0.8\textwidth]{img/m3_confusion.png}{M3 (zamrznutý backbone) --
+kontingenčná tabuľka najlepšieho behu (testovacie dáta)}{fig:m3-confusion}
+
+V súčte troch behov sú najčastejšie zámeny \emph{pancakes} $\rightarrow$
+\emph{waffles} (20-krát), \emph{beef\_tartare} $\rightarrow$
+\emph{lasagna} (17) a \emph{chicken\_wings} $\rightarrow$ \emph{steak}
+(16). Výrazne najhoršie rozpoznávaná trieda je \emph{donuts} (recall
+78,3~\%), ktorá sa zamieňa hlavne s \emph{waffles} (14-krát), nasledujú
+\emph{pancakes} (83,3~\%) a \emph{panna\_cotta} (86,7~\%). Najlepšie sú
+\emph{greek\_salad} (97,0~\%), \emph{waffles} (95,7~\%)
+a \emph{lobster\_bisque} (95,3~\%).
+
+\subsection{Postupné rozmrazovanie}
+
+\obrazok[0.9\textwidth]{img/m3_gradual_curves.png}{M3 (postupné
+rozmrazovanie) -- priebeh trénovania najlepšieho behu (Loss
+a Accuracy)}{fig:m3-gradual-curves}
+
+\obrazok[0.9\textwidth]{img/m3_compare_gradual_unfreeze_curves.png}{M3 --
+vplyv postupného rozmrazovania na priebeh validačného Loss a Accuracy
+(najlepší beh)}{fig:m3-unfreeze-curves}
+
+Po rozmrazení \texttt{stages.3} v 7. epoche stúpne validačná accuracy
+z $\sim$87~\% na $\sim$92~\% a validačný loss klesne z 0,56 na
+0,27--0,30. Najnižší validačný loss (0,24) dosahuje M3 v 9.--11. epoche
+a najvyššiu validačnú accuracy (93,2--93,9~\%) v 9.--16. epoche. Potom sa
+model začne mierne preučovať: trénovacia accuracy na konci dosiahne
+99,4--99,6~\% a validačný loss vzrastie na $\sim$0,33. V porovnaní
+s ostatnými modelmi je však nárast malý (kapitola~\ref{sec:m1m5}).
+Postupné rozmrazovanie zlepšilo testovaciu accuracy o
+\textbf{3,9~p.\,b.} na 93,49~\% (behy 93,20~\%, 94,00~\% a 93,27~\%).
+
+\obrazok[0.8\textwidth]{img/m3_gradual_confusion.png}{M3 (postupné
+rozmrazovanie) -- kontingenčná tabuľka najlepšieho behu (testovacie
+dáta)}{fig:m3-gradual-confusion}
+
+Chyby sú po rozmrazení rozložené rovnomernejšie -- žiadna zámena sa
+v súčte troch behov nevyskytla viac ako 10-krát (napr. \emph{steak}
+$\rightarrow$ \emph{chicken\_wings}, \emph{pancakes} $\rightarrow$
+\emph{waffles}, \emph{french\_fries} $\rightarrow$ \emph{hot\_dog},
+\emph{cup\_cakes} $\rightarrow$ \emph{donuts}). Trieda \emph{donuts} sa
+zlepšila zo 78,3~\% na 92,3~\%. Najslabšie zostávajú \emph{pancakes}
+(88,0~\%) a \emph{steak} (90,7~\%), najlepšie \emph{waffles}
+a \emph{beef\_tartare} (obe 96,7~\%).
+
+\subsection{Vizualizácia rozhodovania -- GradCAM}
+
+\obrazok[\textwidth]{img/m3_gradcam.png}{M3 (postupné rozmrazovanie) --
+GradCAM vizualizácia na správne (hore) a nesprávne (dole) klasifikovaných
+testovacích vzorkách}{fig:m3-gradcam}
+
+Pri správnych predikciách sa aktivácia sústreďuje na jedlo (mäso pri
+\emph{steak}, hranolky, okraj misky s tatarákom). Pri cupcaku sa model
+pozerá na papierový košíček, čo je pre túto triedu typický znak. Dve
+z chýb tvoria hranolky klasifikované ako \emph{hot\_dog}: na jednom obrázku
+sú hranolky podávané pri hot dogu, na druhom má jedlo tvar podlhovastej
+žemle. Pri šiškách klasifikovaných ako \emph{french\_fries} obrázok
+zobrazuje iba krabicu s logom, bez samotného jedla.
+
+\section{Model M4 -- Swin-T}
+\label{sec:m4}
+
+\subsection{Zamrznutý backbone}
+
+\obrazok[0.9\textwidth]{img/m4_curves.png}{M4 (zamrznutý backbone) --
+priebeh trénovania najlepšieho behu (Loss a Accuracy)}{fig:m4-curves}
+
+M4 má zo všetkých modelov najrýchlejší nábeh (validačná accuracy po prvej
+epoche $\sim$82,5~\%) aj najnižší validačný loss na konci trénovania
+($\sim$0,32). Ako pri M3, trénovacia accuracy (89,8--90,0~\%) zostáva pod
+validačnou (90,3--90,5~\%) a model sa nepreučuje.
+
+\begin{table}[H]
+    \centering
+    \caption{M4 -- testovacie metriky (priemer $\pm$ smerodajná odchýlka z 3 behov)}
+    \label{tab:m4-metrics}
+    \begin{tabular}{lcc}
+        \toprule
+        Metrika & Zamrznutý backbone & Postupné rozmrazovanie \\
+        \midrule
+        Accuracy  & 91,47 $\pm$ 0,00~\% & \textbf{94,04 $\pm$ 0,31~\%} \\
+        Precision & 91,57 $\pm$ 0,02~\% & \textbf{94,17 $\pm$ 0,30~\%} \\
+        Recall    & 91,47 $\pm$ 0,00~\% & \textbf{94,04 $\pm$ 0,31~\%} \\
+        F1        & 91,48 $\pm$ 0,00~\% & \textbf{94,05 $\pm$ 0,31~\%} \\
+        Čas (3 behy) & 0:38:30 & 1:05:41 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+So zamrznutým backbonom dosiahol M4 \textbf{najlepší výsledok spomedzi
+všetkých modelov} (91,47~\%). Všetky tri behy klasifikovali správne
+presne 1\,372 z 1\,500 testovacích obrázkov. Nejde o chybu -- behy majú
+rôzne kontingenčné tabuľky, rôzny priebeh loss aj rôznu najlepšiu epochu
+(25, 25 a 27) a mierne sa líši aj precision. Pri zamrznutom backbone sa
+trénuje iba lineárna vrstva nad tými istými príznakmi, takže rôzne
+inicializácie konvergujú k veľmi podobnému riešeniu a zhoda v počte
+správnych odpovedí je tu pravdepodobná.
+
+\obrazok[0.8\textwidth]{img/m4_confusion.png}{M4 (zamrznutý backbone) --
+kontingenčná tabuľka najlepšieho behu (testovacie dáta)}{fig:m4-confusion}
+
+V súčte troch behov sú najčastejšie zámeny \emph{cup\_cakes}
+$\rightarrow$ \emph{donuts} (16-krát), \emph{donuts} $\rightarrow$
+\emph{pancakes} (15) a \emph{french\_fries} $\rightarrow$
+\emph{hot\_dog} (13). Recall všetkých tried je aspoň 87,7~\%
+(\emph{pancakes}), najlepšie sú \emph{lobster\_bisque} (97,0~\%)
+a \emph{greek\_salad} (95,0~\%).
+
+\subsection{Postupné rozmrazovanie}
+
+\obrazok[0.9\textwidth]{img/m4_gradual_curves.png}{M4 (postupné
+rozmrazovanie) -- priebeh trénovania najlepšieho behu (Loss
+a Accuracy)}{fig:m4-gradual-curves}
+
+\obrazok[0.9\textwidth]{img/m4_compare_gradual_unfreeze_curves.png}{M4 --
+vplyv postupného rozmrazovania na priebeh validačného Loss a Accuracy
+(najlepší beh)}{fig:m4-unfreeze-curves}
+
+Rozmrazenie \texttt{layers.3} v 7. epoche zvýši validačnú accuracy
+z $\sim$88~\% na $\sim$91,5~\% a validačný loss klesne z 0,43 na
+0,26--0,29. Najlepšiu validačnú accuracy (92,6--93,9~\%) dosahuje M4
+v 11.--12. epoche. Po rozmrazení \texttt{layers.2} v 13. epoche sa
+trénovanie stáva nestabilným: validačná accuracy kolíše v rozsahu
+približne 88,5--92~\% a validačný loss rastie až na 0,42--0,49, zatiaľ
+čo trénovacia accuracy dosahuje $\sim$97,5~\%. Swin sa teda pri
+zvolenom learning rate $3\times10^{-4}$ preučuje výraznejšie ako ConvNeXt.
+Vďaka výberu checkpointu podľa validačnej accuracy to výsledok
+nepoškodilo -- testovacia accuracy stúpla o \textbf{2,6~p.\,b.} na
+\textbf{94,04~\%} (behy 94,47~\%, 93,93~\% a 93,73~\%), čo je najlepší
+výsledok celého projektu.
+
+\obrazok[0.8\textwidth]{img/m4_gradual_confusion.png}{M4 (postupné
+rozmrazovanie) -- kontingenčná tabuľka najlepšieho behu (testovacie
+dáta)}{fig:m4-gradual-confusion}
+
+M4 s postupným rozmrazovaním má najrovnomernejšie rozložené chyby: žiadna
+zámena sa v súčte troch behov nevyskytla viac ako 8-krát
+(\emph{panna\_cotta} $\rightarrow$ \emph{lobster\_bisque},
+\emph{cup\_cakes} $\rightarrow$ \emph{donuts}) a recall všetkých tried je
+aspoň 90,7~\% (\emph{french\_fries}). Oproti M3 sa výrazne zlepšil
+\emph{steak} (z 90,7~\% na 92,7~\%) aj \emph{pancakes} (z 88,0~\% na
+93,3~\%).
+
+\subsection{Vizualizácia rozhodovania -- GradCAM}
+
+\obrazok[\textwidth]{img/m4_gradcam.png}{M4 (postupné rozmrazovanie) --
+GradCAM vizualizácia na správne (hore) a nesprávne (dole) klasifikovaných
+testovacích vzorkách}{fig:m4-gradcam}
+
+Mapy Swinu sú vďaka pozornosti v oknách ohraničené na celé objekty -- pri
+hranolkách alebo steaku pokrývajú takmer celé jedlo. Pri chybách model
+reaguje na zavádzajúce prvky: hranolky v žemli klasifikuje ako
+\emph{hot\_dog}, jedálny lístok bez jedla ako \emph{french\_fries} (aktivácia
+leží na texte) a vysokú vežu z cupcakov ako \emph{donuts}.
+
+\section{Model M5 -- CoAtNet-0}
+\label{sec:m5}
+
+\subsection{Zamrznutý backbone}
+
+\obrazok[0.9\textwidth]{img/m5_curves.png}{M5 (zamrznutý backbone) --
+priebeh trénovania najlepšieho behu (Loss a Accuracy)}{fig:m5-curves}
+
+M5 začína s validačnou accuracy $\sim$77~\% po prvej epoche a na konci
+dosahuje $\sim$88,3~\% pri validačnom loss $\sim$0,40. Trénovacia accuracy
+(89,2--89,4~\%) je len mierne nad validačnou, model sa nepreučuje.
+
+\begin{table}[H]
+    \centering
+    \caption{M5 -- testovacie metriky (priemer $\pm$ smerodajná odchýlka z 3 behov)}
+    \label{tab:m5-metrics}
+    \begin{tabular}{lcc}
+        \toprule
+        Metrika & Zamrznutý backbone & Postupné rozmrazovanie \\
+        \midrule
+        Accuracy  & 88,24 $\pm$ 0,08~\% & \textbf{92,76 $\pm$ 0,33~\%} \\
+        Precision & 88,42 $\pm$ 0,08~\% & \textbf{92,95 $\pm$ 0,28~\%} \\
+        Recall    & 88,24 $\pm$ 0,08~\% & \textbf{92,76 $\pm$ 0,33~\%} \\
+        F1        & 88,25 $\pm$ 0,09~\% & \textbf{92,78 $\pm$ 0,33~\%} \\
+        Čas (3 behy) & 0:32:47 & 1:04:48 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Jednotlivé behy dosiahli 88,13~\%, 88,27~\% a 88,33~\%. Hoci má CoAtNet-0
+zo všetkých použitých modelov najvyššiu presnosť na ImageNet (82,4~\%), so
+zamrznutým backbonom je druhý najslabší -- prekonal iba M1. Presnosť na
+pôvodnej úlohe teda nepredpovedá, ako dobre sa nezmenené príznaky prenesú
+na novú doménu.
+
+\obrazok[0.8\textwidth]{img/m5_confusion.png}{M5 (zamrznutý backbone) --
+kontingenčná tabuľka najlepšieho behu (testovacie dáta)}{fig:m5-confusion}
+
+Najčastejšia zámena v súčte troch behov je \emph{lasagna} $\rightarrow$
+\emph{pizza} (23-krát, najviac zo všetkých modelov), nasledujú
+\emph{cup\_cakes} $\rightarrow$ \emph{donuts} (16), \emph{steak}
+$\rightarrow$ \emph{beef\_tartare} (15) a \emph{cup\_cakes} $\rightarrow$
+\emph{dumplings} (15). Najhoršie rozpoznávané triedy sú \emph{lasagna}
+(80,7~\%), \emph{pancakes} (82,7~\%) a \emph{cup\_cakes} (84,3~\%),
+najlepšie \emph{lobster\_bisque} (95,3~\%) a \emph{pizza} (93,0~\%).
+
+\subsection{Postupné rozmrazovanie}
+
+\obrazok[0.9\textwidth]{img/m5_gradual_curves.png}{M5 (postupné
+rozmrazovanie) -- priebeh trénovania najlepšieho behu (Loss
+a Accuracy)}{fig:m5-gradual-curves}
+
+\obrazok[0.9\textwidth]{img/m5_compare_gradual_unfreeze_curves.png}{M5 --
+vplyv postupného rozmrazovania na priebeh validačného Loss a Accuracy
+(najlepší beh)}{fig:m5-unfreeze-curves}
+
+Po rozmrazení transformerového stupňa \texttt{stages.3} v 7. epoche stúpne
+validačná accuracy z $\sim$85~\% na $\sim$91,5~\% a validačný loss klesne
+z 0,53 na $\sim$0,30. Najlepšiu validačnú accuracy (92,5--92,9~\%) dosahuje
+M5 v 11.--12. epoche. Podobne ako pri Swin sa model po rozmrazení
+\texttt{stages.2} preučuje -- trénovacia accuracy dosiahne $\sim$98~\%
+a validačný loss vzrastie na 0,41--0,49. Postupné rozmrazovanie zlepšilo
+testovaciu accuracy o \textbf{4,5~p.\,b.} na 92,76~\% (behy 92,80~\%,
+93,13~\% a 92,33~\%). Po dotrénovaní teda CoAtNet dobehol väčšinu
+odstupu, ale zostal za M3 aj M4.
+
+\obrazok[0.8\textwidth]{img/m5_gradual_confusion.png}{M5 (postupné
+rozmrazovanie) -- kontingenčná tabuľka najlepšieho behu (testovacie
+dáta)}{fig:m5-gradual-confusion}
+
+Najčastejšie zámeny po rozmrazení sú obojsmerné \emph{lasagna}
+$\leftrightarrow$ \emph{pizza} (12 + 10-krát), \emph{chicken\_wings}
+$\rightarrow$ \emph{lasagna} (12) a \emph{donuts} $\rightarrow$
+\emph{panna\_cotta} (11). Najslabšie triedy sú \emph{steak} (87,3~\%)
+a \emph{pancakes} (88,0~\%), najlepšie \emph{greek\_salad}
+a \emph{dumplings} (obe 95,7~\%).
+
+\subsection{Vizualizácia rozhodovania -- GradCAM}
+
+\obrazok[\textwidth]{img/m5_gradcam.png}{M5 (postupné rozmrazovanie) --
+GradCAM vizualizácia na správne (hore) a nesprávne (dole) klasifikovaných
+testovacích vzorkách}{fig:m5-gradcam}
+
+Pri správnych predikciách sa aktivácia drží na jedle (šalát, tatarák,
+poleva cupcaku). Nesprávne klasifikované vzorky sú väčšinou obrázky bez
+jasne viditeľného jedla: jedálny lístok (\emph{dumplings} $\rightarrow$
+\emph{donuts}), obal s logom (\emph{cup\_cakes} $\rightarrow$
+\emph{waffles}) alebo biely dezert prekrytý ozdobou (\emph{donuts}
+$\rightarrow$ \emph{panna\_cotta}). Podobné nejasné obrázky (napr. ten istý
+jedálny lístok) sa medzi chybami objavujú aj pri M3 a M4 -- ide
+o vzorky, ktoré sú problematické už v samotnom datasete (Food-101 obsahuje
+aj nesprávne označené alebo nejednoznačné obrázky).
+
+\section{Porovnanie modelov M1--M5}
+\label{sec:m1m5}
+
+Tabuľka~\ref{tab:m1m5} porovnáva všetkých päť modelov v dvoch
+konfiguráciách, ktoré boli natrénované pre každý model. Na overenie, či
+sa modely vôbec líšia, bola pre každú konfiguráciu použitá
+\textbf{jednocestná ANOVA} nad testovacou accuracy troch behov každého
+modelu. Dvojice modelov boli porovnané \textbf{Welchovým t-testom}
+(tabuľka~\ref{tab:m1m5-ttest}).
+
+\begin{table}[H]
+    \centering
+    \caption{Porovnanie M1--M5 -- testovacia accuracy v~\% (priemer $\pm$ std z 3 behov), počet parametrov a čas trénovania}
+    \label{tab:m1m5}
+    \footnotesize
+    \begin{tabular}{lccccccc}
+        \toprule
+         & & \multicolumn{3}{c}{Zamrznutý backbone} & \multicolumn{3}{c}{Postupné rozmrazovanie} \\
+        \cmidrule(lr){3-5} \cmidrule(lr){6-8}
+        Model & Parametre & Trénovateľné & Accuracy & Čas & Accuracy & $p$ vs M1 & Čas \\
+        \midrule
+        M1 ResNet50      & 23,54 mil. & 30\,735  & 86,13 $\pm$ 0,16 & 0:30 & 92,60 $\pm$ 0,19 & --    & 0:44 \\
+        M2 ResNet50+CBAM & 24,24 mil. & 731\,527 & 89,07 $\pm$ 0,67 & 1:06 & 91,91 $\pm$ 0,85 & 0,369 & 1:37 \\
+        M3 ConvNeXt-T    & 27,83 mil. & 11\,535  & 89,62 $\pm$ 0,30 & 0:31 & 93,49 $\pm$ 0,36 & 0,054 & 0:51 \\
+        M4 Swin-T        & 27,53 mil. & 11\,535  & \textbf{91,47 $\pm$ 0,00} & 0:39 & \textbf{94,04 $\pm$ 0,31} & 0,008 & 1:06 \\
+        M5 CoAtNet-0     & 26,68 mil. & 11\,535  & 88,24 $\pm$ 0,08 & 0:33 & 92,76 $\pm$ 0,33 & 0,600 & 1:05 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \caption{Párové Welchove t-testy testovacej accuracy ($p$-hodnoty, 3 behy na model); tučne $p < 0{,}05$}
+    \label{tab:m1m5-ttest}
+    \footnotesize
+    \begin{tabular}{lccccc@{\hspace{2em}}lccccc}
+        \toprule
+        \multicolumn{6}{c}{Zamrznutý backbone} & \multicolumn{6}{c}{Postupné rozmrazovanie} \\
+        \cmidrule(lr){1-6} \cmidrule(lr){7-12}
+           & M1 & M2 & M3 & M4 & M5 &    & M1 & M2 & M3 & M4 & M5 \\
+        \midrule
+        M1 & --   & \textbf{0,020} & \textbf{$<$0,001} & \textbf{$<$0,001} & \textbf{$<$0,001} & M1 & --    & 0,369 & 0,054 & \textbf{0,008} & 0,600 \\
+        M2 &      & --    & 0,368 & \textbf{0,037} & 0,223 & M2 &       & --    & 0,103 & 0,057 & 0,293 \\
+        M3 &      &       & --    & \textbf{0,013} & \textbf{0,017} & M3 &       &       & --    & 0,176 & 0,102 \\
+        M4 &      &       &       & --    & \textbf{$<$0,001} & M4 &       &       &       & --    & \textbf{0,016} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\noindent ANOVA potvrdila rozdiel medzi modelmi v oboch konfiguráciách --
+pri zamrznutom backbone veľmi výrazne ($F = 66{,}7$, $p = 3{,}6\cdot10^{-7}$),
+pri postupnom rozmrazovaní slabšie ($F = 6{,}3$, $p = 0{,}009$). Pri iba
+troch behoch na model majú párové testy malú silu, preto nevýznamný
+rozdiel neznamená, že modely sú rovnako dobré, iba že rozdiel sa nedal
+spoľahlivo preukázať.
+
+\obrazok[0.95\textwidth]{img/m1m5_accuracy.png}{M1--M5 -- testovacia
+accuracy v oboch konfiguráciách (priemer 3 behov $\pm$ std)}{fig:m1m5-acc}
+
+\obrazok[\textwidth]{img/m1m5_metrics.png}{M1--M5 -- Accuracy, Precision,
+Recall a F1 v oboch konfiguráciách (makro priemer, 3 behy $\pm$
+std)}{fig:m1m5-metrics}
+
+\obrazoknasirku{img/m1m5_val_curves.png}{M1--M5 -- priebeh validačného
+Loss a Accuracy najlepšieho behu, hore zamrznutý backbone, dole postupné
+rozmrazovanie}{fig:m1m5-curves}
+
+\obrazok[\textwidth]{img/m1m5_class_recall.png}{M1--M5 -- recall
+jednotlivých tried v oboch konfiguráciách, súčet troch behov (testovacie
+dáta)}{fig:m1m5-recall}
+
+\obrazok[0.8\textwidth]{img/m1m5_acc_vs_time.png}{M1--M5 -- testovacia
+accuracy vs. čas trénovania troch behov}{fig:m1m5-time}
+
+\subsection{Diskusia}
+
+\paragraph{Kvalita predtrénovaných príznakov (zamrznutý backbone).}
+Pri zamrznutom backbone sa trénuje iba lineárny klasifikátor, výsledok
+preto priamo meria, ako dobre sú predtrénované príznaky použiteľné pre
+jedlá. Poradie je M4 Swin-T (91,47~\%) $>$ M3 ConvNeXt-T (89,62~\%)
+$\approx$ M2 (89,07~\%) $>$ M5 CoAtNet-0 (88,24~\%) $>$ M1 ResNet50
+(86,13~\%). M4 je štatisticky významne lepší ako všetky ostatné modely.
+Modernejšie architektúry M3 a M4 s iba 11\,535 trénovateľnými parametrami
+prekonali aj M2, ktorý cez bloky CBAM trénuje 731 tisíc parametrov. CoAtNet
+je napriek najvyššej presnosti na ImageNet druhý najslabší. Je to v súlade
+s poznatkom, že vyššia presnosť na pôvodnej úlohe automaticky neznamená
+lepšie prenosné príznaky.
+
+\paragraph{Postupné rozmrazovanie.} Doladenie backbonu zlepšilo všetky
+modely (M1 +6,5, M2 +2,8, M3 +3,9, M4 +2,6, M5 +4,5~p.\,b.) a zároveň
+zmenšilo rozdiely medzi nimi: rozpätie výsledkov kleslo z 5,3~p.\,b. na
+2,1~p.\,b. Najlepšie dopadol opäť \textbf{M4 Swin-T (94,04~\%)}, nasledovaný
+M3 ConvNeXt-T (93,49~\%). Rozdiel medzi nimi nie je štatisticky významný
+($p = 0{,}18$). Významne lepší je M4 oproti M1 ($p = 0{,}008$) a M5
+($p = 0{,}016$). CoAtNet sa po doladení dostal na úroveň M1 ($p = 0{,}60$),
+jeho hybridná architektúra teda na tomto datasete neprinesla výhodu.
+
+\paragraph{Priebeh trénovania a stabilita.} Pri zamrznutom backbone sa
+žiadny model nepreučuje. Modely M3--M5 majú oveľa rýchlejší nábeh ako
+ResNet50 (validačná accuracy po prvej epoche 77--83~\% oproti
+$\sim$69~\%). Pri postupnom rozmrazovaní je u všetkých modelov vidieť
+skok v 7. epoche po rozmrazení posledného stupňa. Potom sa modely
+preučujú, každý však v inej miere (Obr.~\ref{fig:m1m5-curves}).
+ConvNeXt (M3) má po celý čas najnižší validačný loss a jeho nárast je
+najmenší ($\sim$0,33 na konci). Transformerové modely M4 a M5 dosahujú
+najlepšiu validačnú accuracy už v 11.--12. epoche a potom ich validačný
+loss narastie na 0,42--0,49. Vyplýva z toho, že learning rate
+$3\times10^{-4}$, ktorý je spoločný pre všetky modely, je na doladenie
+transformerov príliš vysoký. Pre praktické použitie by bolo vhodné pre M4
+a M5 znížiť learning rate pre rozmrazené vrstvy (napr. na $10^{-4}$) alebo
+skrátiť trénovanie. V projekte to nebolo urobené, aby zostali parametre
+trénovania pre všetky modely rovnaké. Smerodajná odchýlka medzi behmi je
+pri M3--M5 0,0--0,4~p.\,b., teda podobne nízka ako pri M1 a výrazne nižšia
+ako pri M2.
+
+\paragraph{Triedy.} Heatmapa recallu (Obr.~\ref{fig:m1m5-recall}) ukazuje,
+že ťažké triedy sú pri všetkých modeloch podobné: \emph{pancakes}
+(zámena s \emph{waffles}), \emph{steak} (zámena s \emph{beef\_tartare}
+a \emph{chicken\_wings}), dvojica \emph{lasagna}--\emph{pizza}
+a \emph{cup\_cakes}--\emph{donuts}. Naopak \emph{greek\_salad}
+a \emph{lobster\_bisque} sú pri všetkých modeloch medzi najlepšími. Po
+postupnom rozmrazení majú všetky modely recall každej triedy aspoň
+87~\%, najvyrovnanejší je M4 (90,7--97,3~\%).
+
+\paragraph{Výpočtová náročnosť.} Graf na Obr.~\ref{fig:m1m5-time} ukazuje,
+že najlepší pomer presnosti a času má M3 s postupným rozmrazovaním
+(93,5~\% za 51 minút). M4 je o 0,55~p.\,b. lepší, ale trénuje sa
+o $\sim$28~\% dlhšie. M2 je najpomalší a so zamrznutým backbonom aj
+s rozmrazovaním zaostáva za M3 aj M4. Časy M3--M5 sú s M1 a M2
+porovnateľné iba približne (kapitola~\ref{sec:m345-postup}).
+
 \section{Zhrnutie výsledkov}
 \label{sec:zhrnutie}
 
 \begin{table}[H]
     \centering
-    \caption{Súhrnné porovnanie všetkých konfigurácií M1 a M2 (priemer $\pm$ std z 3 behov, testovacie dáta)}
+    \caption{Súhrnné porovnanie všetkých natrénovaných konfigurácií (priemer $\pm$ std z 3 behov, testovacie dáta)}
     \label{tab:summary}
     \footnotesize
     \begin{tabular}{llcccc}
@@ -499,27 +1041,39 @@ GPU čiastočne zdieľaná s inými procesmi, čo je vidieť aj na rozdielnych
         \midrule
         M1 & základná (s augm.)     & 86,13 $\pm$ 0,16 & 86,43 $\pm$ 0,15 & 86,13 $\pm$ 0,16 & 0:29:50 \\
         M1 & bez augmentácie        & 84,31 $\pm$ 0,06 & 84,67 $\pm$ 0,08 & 84,31 $\pm$ 0,06 & 0:27:14 \\
-        M1 & postupné rozmraz.      & \textbf{92,60 $\pm$ 0,19} & \textbf{92,75 $\pm$ 0,15} & \textbf{92,60 $\pm$ 0,19} & 0:44:10 \\
+        M1 & postupné rozmraz.      & 92,60 $\pm$ 0,19 & 92,75 $\pm$ 0,15 & 92,60 $\pm$ 0,19 & 0:44:10 \\
         \midrule
         M2 & základná (s augm.)     & 89,07 $\pm$ 0,67 & 89,33 $\pm$ 0,64 & 89,07 $\pm$ 0,67 & 1:06:25 \\
         M2 & bez augmentácie        & 85,53 $\pm$ 0,52 & 86,01 $\pm$ 0,51 & 85,53 $\pm$ 0,52 & 1:04:46 \\
         M2 & postupné rozmraz.      & 91,91 $\pm$ 0,85 & 92,05 $\pm$ 0,79 & 91,91 $\pm$ 0,85 & 1:36:38 \\
+        \midrule
+        M3 & základná (s augm.)     & 89,62 $\pm$ 0,30 & 89,82 $\pm$ 0,31 & 89,62 $\pm$ 0,30 & 0:31:19 \\
+        M3 & postupné rozmraz.      & 93,49 $\pm$ 0,36 & 93,60 $\pm$ 0,35 & 93,49 $\pm$ 0,36 & 0:51:13 \\
+        \midrule
+        M4 & základná (s augm.)     & 91,47 $\pm$ 0,00 & 91,57 $\pm$ 0,02 & 91,47 $\pm$ 0,00 & 0:38:30 \\
+        M4 & postupné rozmraz.      & \textbf{94,04 $\pm$ 0,31} & \textbf{94,17 $\pm$ 0,30} & \textbf{94,04 $\pm$ 0,31} & 1:05:41 \\
+        \midrule
+        M5 & základná (s augm.)     & 88,24 $\pm$ 0,08 & 88,42 $\pm$ 0,08 & 88,24 $\pm$ 0,08 & 0:32:47 \\
+        M5 & postupné rozmraz.      & 92,76 $\pm$ 0,33 & 92,95 $\pm$ 0,28 & 92,76 $\pm$ 0,33 & 1:04:48 \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-Najlepší výsledok dosiahol \textbf{M1 s postupným rozmrazovaním
-(92,60~\%)}, ktorý je zároveň najstabilnejší a výrazne rýchlejší ako
-porovnateľná konfigurácia M2. Poradie vplyvu skúmaných faktorov je pri
-oboch modeloch rovnaké: postupné rozmrazovanie $>$ augmentácia. Attention
-vrstva CBAM priniesla štatisticky významné zlepšenie iba pri zamrznutom
-backbone s augmentáciou. Pri rozmrazenom backbone významné zlepšenie
-nepriniesla.
+Najlepší výsledok dosiahol \textbf{vizuálny transformer M4 Swin-T
+s postupným rozmrazovaním (94,04~\%)}. M4 je najlepší aj so zamrznutým
+backbonom (91,47~\%), jeho predtrénované príznaky sa teda na
+klasifikáciu jedál prenášajú najlepšie. Tesne za ním je optimalizovaná CNN
+M3 ConvNeXt-T (93,49~\%), ktorá sa od M4 štatisticky významne nelíši,
+trénuje sa rýchlejšie a doladenie je pri nej najstabilnejšie. Hybridný
+model M5 CoAtNet-0 ani attention vrstva CBAM v M2 po doladení neprekonali
+základný ResNet50. Pri všetkých piatich modeloch platí, že postupné
+rozmrazovanie je najúčinnejšie opatrenie (+2,6 až +6,5~p.\,b.) a pri M1
+a M2 má väčší vplyv ako augmentácia.
 
 \section{Implementácia}
 \label{sec:implementacia}
 
-Projekt je napísaný v Pythone (PyTorch, torchvision, pytorch-grad-cam,
+Projekt je napísaný v Pythone (PyTorch, torchvision, timm, pytorch-grad-cam,
 pandas, matplotlib, scikit-learn, SciPy). Kód v priečinku \texttt{src/} je
 štruktúrovaný takto:
 
@@ -538,6 +1092,10 @@ pandas, matplotlib, scikit-learn, SciPy). Kód v priečinku \texttt{src/} je
         \texttt{data\_preprocessing/transforms.py} & augmentované a neaugmentované transformácie \\
         \texttt{models/M1\_CNN\_ResNet50.py} & architektúra M1 \\
         \texttt{models/M2\_CNN\_ResNet50\_CBAM.py} & architektúra M2 (ResNet50 + CBAM) \\
+        \texttt{models/timm\_backbone.py} & spoločné vytvorenie, zmrazenie a rozmrazovanie modelov z timm \\
+        \texttt{models/M3\_CNN\_ConvNeXt\_Tiny.py} & M3: ConvNeXt-T, stupne rozmrazovania, vrstva pre GradCAM \\
+        \texttt{models/M4\_ViT\_Swin\_Tiny.py} & M4: Swin-T, vrátane prevodu tokenov pre GradCAM \\
+        \texttt{models/M5\_Hybrid\_CoAtNet\_0.py} & M5: CoAtNet-0, vlastná normalizácia vstupu \\
         \texttt{engine.py} & spoločná tréningová/evaluačná slučka, rozvrh rozmrazovania \\
         \texttt{experiment.py} & 3 behy, ukladanie metrík, grafov a checkpointov \\
         \texttt{evaluation.py} & metriky, kontingenčná tabuľka, štatistiky behov \\
@@ -547,9 +1105,13 @@ pandas, matplotlib, scikit-learn, SciPy). Kód v priečinku \texttt{src/} je
         \texttt{M1\_ResNet50\_Train/gradcam\_m1.py} & GradCAM pre najlepší beh M1 \\
         \texttt{M2\_ResNet\_CBAM/train\_m2*.py} & M2: základná, bez augm., rozmrazovanie \\
         \texttt{M2\_ResNet\_CBAM/gradcam\_m2.py} & GradCAM pre najlepší beh M2 \\
+        \texttt{M3\_ConvNeXt/}, \texttt{M4\_Swin/}, \texttt{M5\_CoAtNet/} & \texttt{train\_m*.py} (zamrznutý backbone), \\
+         & \texttt{train\_m*\_gradual\_unfreeze.py}, \texttt{gradcam\_m*.py} \\
+        \texttt{smoke\_test.py} & kontrola modelu pred trénovaním (pamäť GPU, gradienty, normalizácia) \\
         \texttt{summarize\_results.py} & súhrnná tabuľka konfigurácií každého modelu \\
         \texttt{compare\_ablations.py} & augmentácia a rozmrazovanie voči základnej konfigurácii \\
         \texttt{compare\_M1\_M2.py} & porovnanie M1 a M2, Welchov t-test \\
+        \texttt{compare\_models.py} & porovnanie M1--M5, ANOVA, párové Welchove t-testy \\
         \bottomrule
     \end{tabular}
 \end{table}
@@ -569,13 +1131,28 @@ Výsledky sú v priečinku \texttt{Results/} rozdelené podľa modelu:
           \texttt{M2\_cnn\_cbam\_gradual\_unfreeze}, \texttt{comparisons/}
           a \texttt{results\_summary.md},
     \item \texttt{Results/M1\_vs\_M2/} -- porovnanie oboch modelov
-          (tabuľka s t-testom a grafy).
+          (tabuľka s t-testom a grafy),
+    \item \texttt{Results/M3\_ConvNeXt/}, \texttt{Results/M4\_Swin/},
+          \texttt{Results/M5\_CoAtNet/} -- konfigurácie \texttt{M3\_convnext},
+          \texttt{M3\_convnext\_gradual\_unfreeze} (analogicky
+          \texttt{M4\_swin*} a \texttt{M5\_coatnet*}), porovnanie
+          v \texttt{comparisons/} a \texttt{results\_summary.md},
+    \item \texttt{Results/M1\_to\_M5/} -- porovnanie všetkých modelov
+          (\texttt{comparison\_table.md}, \texttt{stat\_tests.md} a grafy).
 \end{itemize}
+
+\noindent Umiestnenie dát a počet procesov na načítanie dát sa dajú
+nastaviť premennými prostredia \texttt{HNS\_DATA\_DIR}
+a \texttt{HNS\_NUM\_WORKERS}. Pri trénovaní vo Windows je vhodné
+\texttt{HNS\_NUM\_WORKERS=8}, pretože každý proces si samostatne načítava
+PyTorch a pri 16 procesoch na každý \texttt{DataLoader} dôjde operačná
+pamäť.
 
 \noindent Každá konfigurácia obsahuje pre každý beh (\texttt{run1}--\texttt{run3})
 históriu trénovania (\texttt{history.csv}), kontingenčnú tabuľku (CSV aj PNG)
 a graf priebehu trénovania. Na úrovni konfigurácie je súhrn troch behov
-(\texttt{summary.json}), grafy najlepšieho behu a kompletný výpis trénovania
-(\texttt{training\_log.txt}). Checkpointy (\texttt{best.pt}, $\sim$90~MB)
+(\texttt{summary.json}), grafy najlepšieho behu, GradCAM vizualizácia
+a kompletný výpis trénovania (\texttt{training\_log.txt}). Checkpointy
+(\texttt{best.pt}, 90--110~MB)
 sa kvôli veľkosti neukladajú do gitu. Dajú sa znova vytvoriť spustením
 trénovacích skriptov.

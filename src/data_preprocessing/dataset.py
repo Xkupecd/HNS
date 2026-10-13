@@ -39,9 +39,11 @@ def build_dataloaders(
     augment_train: bool = True,
     batch_size: int = config.BATCH_SIZE,
     num_workers: int = config.NUM_WORKERS,
+    mean: tuple = config.IMAGENET_MEAN,
+    std: tuple = config.IMAGENET_STD,
 ) -> dict[str, DataLoader]:
-    eval_tf = build_eval_transform()
-    train_tf = build_train_transform(augment=augment_train)
+    eval_tf = build_eval_transform(mean=mean, std=std)
+    train_tf = build_train_transform(augment=augment_train, mean=mean, std=std)
 
     train_ds = FoodDataset(manifest_path, "train", transform=train_tf)
     val_ds = FoodDataset(manifest_path, "val", transform=eval_tf)
@@ -50,10 +52,12 @@ def build_dataloaders(
     common = dict(num_workers=num_workers, pin_memory=True)
     if num_workers > 0:
         common["prefetch_factor"] = 4
-        common["persistent_workers"] = True
+    # train/val are iterated every epoch, so their workers are kept alive; the
+    # test loader is used once per run and would otherwise hold idle workers
+    persistent = dict(persistent_workers=num_workers > 0)
 
     return {
-        "train": DataLoader(train_ds, batch_size=batch_size, shuffle=True, **common),
-        "val": DataLoader(val_ds, batch_size=batch_size, shuffle=False, **common),
+        "train": DataLoader(train_ds, batch_size=batch_size, shuffle=True, **common, **persistent),
+        "val": DataLoader(val_ds, batch_size=batch_size, shuffle=False, **common, **persistent),
         "test": DataLoader(test_ds, batch_size=batch_size, shuffle=False, **common),
     }
