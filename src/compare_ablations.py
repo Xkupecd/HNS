@@ -1,5 +1,6 @@
 """Compares each model's baseline against its two ablations: augmentation
-on/off and gradual unfreezing vs a frozen backbone (for M1 and M2).
+on/off and gradual unfreezing vs a frozen backbone (for M1-M3; pairs whose
+runs are missing, e.g. M3 without augmentation, are skipped).
 
 Produces bar charts (test acc/precision/recall/f1, mean +/- std over the
 3 runs), overlaid best-run validation curves and a CSV table for each pair,
@@ -22,6 +23,9 @@ from src import config
 GROUPS = [
     (config.M1_RESULTS_DIR, "M1_cnn"),
     (config.M2_RESULTS_DIR, "M2_cnn_cbam"),
+    (config.M3_RESULTS_DIR, "M3_convnext"),
+    (config.M4_RESULTS_DIR, "M4_swin"),
+    (config.M5_RESULTS_DIR, "M5_coatnet"),
 ]
 
 ABLATIONS = [

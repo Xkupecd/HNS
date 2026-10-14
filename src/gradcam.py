@@ -38,9 +38,16 @@ def save_gradcam_grid(
     n_correct: int = 4,
     n_incorrect: int = 4,
     seed: int = config.SEED,
+    reshape_transform=None,
+    mean: tuple = config.IMAGENET_MEAN,
+    std: tuple = config.IMAGENET_STD,
 ) -> None:
     """Picks `n_correct` correctly- and `n_incorrect` incorrectly-classified
-    test samples at random and saves a GradCAM overlay grid comparing them."""
+    test samples at random and saves a GradCAM overlay grid comparing them.
+
+    `reshape_transform` converts the target layer's activations to NCHW for
+    transformer backbones (e.g. Swin's NHWC token maps); `mean`/`std` must
+    match the normalization the model was trained with."""
     model.eval()
     test_ds = loaders["test"].dataset
     y_true, y_pred = predict(model, loaders["test"], device)
@@ -51,7 +58,7 @@ def save_gradcam_grid(
     picked_correct = rng.sample(correct_idx, min(n_correct, len(correct_idx)))
     picked_incorrect = rng.sample(incorrect_idx, min(n_incorrect, len(incorrect_idx)))
 
-    cam = GradCAM(model=model, target_layers=[target_layer])
+    cam = GradCAM(model=model, target_layers=[target_layer], reshape_transform=reshape_transform)
     cols = max(len(picked_correct), len(picked_incorrect), 1)
     fig, axes = plt.subplots(2, cols, figsize=(3.2 * cols, 7.5), squeeze=False)
 
@@ -68,7 +75,7 @@ def save_gradcam_grid(
             rel_path, _ = test_ds.samples[idx]
             rgb_img = _load_rgb(test_ds.data_dir / rel_path, config.IMAGE_SIZE)
             input_tensor = preprocess_image(
-                rgb_img, mean=list(config.IMAGENET_MEAN), std=list(config.IMAGENET_STD)
+                rgb_img, mean=list(mean), std=list(std)
             ).to(device)
             # GradCAM needs a gradient graph even though the backbone is frozen
             # (all params requires_grad=False), so mark the input itself.
