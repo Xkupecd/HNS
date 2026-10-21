@@ -1,0 +1,52 @@
+device=cuda backbone=convnext_tiny.fb_in1k (frozen) clip_len=16 train_clips_per_video=5
+[M1_cnn_svm run1] C=0.3 gamma=0.0003 train_acc=0.9435 val_acc=0.6267 test_acc=0.5714 precision=0.6471 recall=0.5258 f1=0.5385 duration=0:01:08
+[M1_cnn_svm run2] C=0.3 gamma=0.0003 train_acc=0.9307 val_acc=0.6267 test_acc=0.5714 precision=0.6364 recall=0.5258 f1=0.5366 duration=0:01:06
+[M1_cnn_svm run3] C=10 gamma=0.0003 train_acc=1.0000 val_acc=0.6533 test_acc=0.6000 precision=0.6736 recall=0.5729 f1=0.5835 duration=0:01:09
+[M1_cnn_svm run4] C=1 gamma=0.0003 train_acc=0.9945 val_acc=0.6133 test_acc=0.6000 precision=0.6644 recall=0.5672 f1=0.5800 duration=0:01:06
+[M1_cnn_svm run5] C=0.3 gamma=0.0003 train_acc=0.9374 val_acc=0.6267 test_acc=0.5857 precision=0.6639 recall=0.5436 f1=0.5587 duration=0:01:07
+[M1_cnn_svm] summary: {
+  "acc_mean": 0.5857142857142857,
+  "acc_std": 0.012777531299998802,
+  "acc_min": 0.5714285714285714,
+  "acc_max": 0.6,
+  "precision_mean": 0.6570625147950728,
+  "precision_std": 0.013427460149445536,
+  "precision_min": 0.6363636363636364,
+  "precision_max": 0.673611111111111,
+  "recall_mean": 0.5470542564852028,
+  "recall_std": 0.0199325849266456,
+  "recall_min": 0.5257923821702594,
+  "recall_max": 0.5728557727438801,
+  "f1_mean": 0.5594635995444349,
+  "f1_std": 0.01981665880308422,
+  "f1_min": 0.5366355866355867,
+  "f1_max": 0.5835252204511362,
+  "per_class_mean": {
+    "clap": {
+      "sensitivity": 0.49411764705882355,
+      "specificity": 1.0
+    },
+    "drink": {
+      "sensitivity": 0.8869565217391303,
+      "specificity": 0.5829787234042554
+    },
+    "eat": {
+      "sensitivity": 0.35714285714285715,
+      "specificity": 0.9178571428571429
+    },
+    "wave": {
+      "sensitivity": 0.45,
+      "specificity": 0.9111111111111111
+    }
+  },
+  "per_run_acc": [
+    0.5714285714285714,
+    0.5714285714285714,
+    0.6,
+    0.6,
+    0.5857142857142857
+  ],
+  "best_run": 3,
+  "total_duration": "0:05:36"
+}
+[M1_cnn_svm] total training duration: 0:05:36

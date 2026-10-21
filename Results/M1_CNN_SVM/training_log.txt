@@ -1,0 +1,52 @@
+backbone=convnext_base.fb_in22k (frozen, cached features) clip_len=16 train_clips_per_video=5/10
+[M1_cnn_svm run1] C=3 gamma=0.0001 train_acc=1.0000 val_acc=0.7467 test_acc=0.8286 precision=0.8486 recall=0.8318 f1=0.8284 duration=0:00:33
+[M1_cnn_svm run2] C=3 gamma=3e-05 train_acc=0.9895 val_acc=0.7467 test_acc=0.8429 precision=0.8472 recall=0.8388 f1=0.8378 duration=0:00:26
+[M1_cnn_svm run3] C=3 gamma=0.0001 train_acc=1.0000 val_acc=0.7600 test_acc=0.8143 precision=0.8407 recall=0.8162 f1=0.8116 duration=0:00:27
+[M1_cnn_svm run4] C=3 gamma=0.0001 train_acc=1.0000 val_acc=0.7333 test_acc=0.8143 precision=0.8361 recall=0.8162 f1=0.8102 duration=0:00:28
+[M1_cnn_svm run5] C=3 gamma=0.0001 train_acc=1.0000 val_acc=0.7467 test_acc=0.8286 precision=0.8469 recall=0.8271 f1=0.8224 duration=0:00:27
+[M1_cnn_svm] summary: {
+  "acc_mean": 0.8257142857142856,
+  "acc_std": 0.010690449676496985,
+  "acc_min": 0.8142857142857143,
+  "acc_max": 0.8428571428571429,
+  "precision_mean": 0.8438854217229503,
+  "precision_std": 0.004743141417679161,
+  "precision_min": 0.8361244019138756,
+  "precision_max": 0.8485513024986708,
+  "recall_mean": 0.8260184508586044,
+  "recall_std": 0.008859847268520477,
+  "recall_min": 0.8161878881987578,
+  "recall_max": 0.8388461362805992,
+  "f1_mean": 0.8220915874024378,
+  "f1_std": 0.010346038064503519,
+  "f1_min": 0.8102369852369853,
+  "f1_max": 0.8377659574468085,
+  "per_class_mean": {
+    "clap": {
+      "sensitivity": 0.9882352941176471,
+      "specificity": 0.969811320754717
+    },
+    "drink": {
+      "sensitivity": 0.808695652173913,
+      "specificity": 0.9148936170212766
+    },
+    "eat": {
+      "sensitivity": 0.8571428571428571,
+      "specificity": 0.8857142857142858
+    },
+    "wave": {
+      "sensitivity": 0.65,
+      "specificity": 0.9962962962962962
+    }
+  },
+  "per_run_acc": [
+    0.8285714285714286,
+    0.8428571428571429,
+    0.8142857142857143,
+    0.8142857142857143,
+    0.8285714285714286
+  ],
+  "best_run": 2,
+  "total_duration": "0:02:22"
+}
+[M1_cnn_svm] total training duration: 0:02:22

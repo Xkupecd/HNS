@@ -1,0 +1,24 @@
+{
+  "acc": 0.8,
+  "precision": 0.8094979296066253,
+  "recall": 0.7967265710632079,
+  "f1": 0.7901249779968316,
+  "per_class": {
+    "clap": {
+      "sensitivity": 0.9411764705882353,
+      "specificity": 0.9056603773584906
+    },
+    "drink": {
+      "sensitivity": 0.8260869565217391,
+      "specificity": 0.9148936170212766
+    },
+    "eat": {
+      "sensitivity": 0.8571428571428571,
+      "specificity": 0.9285714285714286
+    },
+    "wave": {
+      "sensitivity": 0.5625,
+      "specificity": 0.9814814814814815
+    }
+  }
+}

@@ -1,0 +1,13 @@
+model,class,sensitivity,specificity
+M1 CNN+SVM,clap,98.82,96.98
+M1 CNN+SVM,drink,80.87,91.49
+M1 CNN+SVM,eat,85.71,88.57
+M1 CNN+SVM,wave,65.0,99.63
+M2 CNN+LSTM,clap,95.29,89.81
+M2 CNN+LSTM,drink,79.13,87.66
+M2 CNN+LSTM,eat,74.29,91.79
+M2 CNN+LSTM,wave,53.75,98.52
+M3 CNN+Transformer,clap,92.94,91.7
+M3 CNN+Transformer,drink,84.35,92.34
+M3 CNN+Transformer,eat,84.29,92.86
+M3 CNN+Transformer,wave,62.5,98.15
